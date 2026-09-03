@@ -131,19 +131,19 @@ curl -s http://127.0.0.1:18080/metrics
 ## 6. Docker 运行示例
 
 ```bash
-docker build -t auroradrive:2.0 .
+docker build -t fuji-netdisk:3.0 .
 
 # 首次建号（挂载卷，users.conf 会持久化）
 docker run --rm \
-  -v auroradrive-data:/data -v auroradrive-users:/etc/reactor-http \
-  auroradrive:2.0 --add-user author:test123456 \
+  -v fuji-netdisk-data:/data -v fuji-netdisk-users:/etc/reactor-http \
+  fuji-netdisk:3.0 --add-user author:test123456 \
   --users-file /etc/reactor-http/users.conf --drive-root /data
 
 # 正式运行（容器内 10000 映射到本机 18080）
-docker run -d --name auroradrive --restart unless-stopped \
+docker run -d --name fuji-netdisk --restart unless-stopped \
   -p 18080:10000 \
-  -v auroradrive-data:/data -v auroradrive-users:/etc/reactor-http \
-  auroradrive:2.0
+  -v fuji-netdisk-data:/data -v fuji-netdisk-users:/etc/reactor-http \
+  fuji-netdisk:3.0
 ```
 
 生产（域名 + HTTPS）推荐直接使用 `deploy/docker-compose.yml` + Caddy，见 `deploy/DEPLOY.md`。

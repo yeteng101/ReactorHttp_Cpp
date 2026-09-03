@@ -1,10 +1,12 @@
-/* AuroraDrive 前端：登录 / 文件浏览 / 分片断点续传 / 在线预览 */
+/* 藤のnetdisk 前端：登录 / 文档编辑 / AI 助手 / 分片断点续传 / 在线预览 */
 (function () {
   "use strict";
 
   const CHUNK_SIZE = 8 * 1024 * 1024;      // 每片 8MB
   const MAX_RUNNING = 3;                    // 并发上传数
   const MAX_TEXT_PREVIEW = 512 * 1024;
+  const MAX_EDIT_TEXT = 2 * 1024 * 1024;    // 编辑器允许的最大文本文件
+  const AI_MAX_CONTEXT = 80000;             // 传给 AI 的文档上下文上限（字符）
 
   const $ = (id) => document.getElementById(id);
   const state = {
@@ -14,7 +16,11 @@
     view: localStorage.getItem("aurora-view") === "grid" ? "grid" : "list",
     uploads: new Map(), // id -> upload item
     queue: [],
-    running: 0
+    running: 0,
+    editor: null,       // { name, segments, text, dirty, mode }
+    aiDoc: null,        // AI 面板打开时绑定的文档
+    aiResult: "",
+    oauth: { github: false, apple: false }
   };
 
   /* ---------------- 基础工具 ---------------- */
@@ -100,6 +106,7 @@
     download: '<path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/>',
     play: '<circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    write: '<path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 3v6h6"/><path d="M9 15h6M9 11h2M9 19h4"/>',
     trash: '<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>'
   };
@@ -113,6 +120,14 @@
   const TEXT_EXT = new Set(["txt", "md", "json", "js", "ts", "css", "html", "htm", "xml",
     "csv", "log", "ini", "conf", "yml", "yaml", "toml", "sh", "py", "c", "cpp", "h",
     "java", "go", "rs", "sql", "properties"]);
+
+  function textFileExt(name) {
+    return (name.split(".").pop() || "").toLowerCase();
+  }
+
+  function isTextFile(entry) {
+    return entry.type !== "directory" && TEXT_EXT.has(textFileExt(entry.name));
+  }
 
   function entryKind(entry) {
     if (entry.type === "directory") return "folder";
@@ -131,8 +146,14 @@
     $("view-app").classList.add("hidden");
     $("view-login").classList.remove("hidden");
     $("upload-panel").classList.add("hidden");
+    $("editor-modal").classList.add("hidden");
+    $("ai-modal").classList.add("hidden");
+    $("ai-config-modal").classList.add("hidden");
+    state.editor = null;
+    state.aiDoc = null;
     state.uploads.clear();
     renderUploadPanel();
+    refreshOAuth();
   }
 
   function showApp(username) {
@@ -239,7 +260,10 @@
           '<button class="icon-btn" data-act="preview" title="在线预览" aria-label="预览">' +
           svgIcon("play", 15) + "</button>" +
           '<button class="icon-btn" data-act="download" title="下载" aria-label="下载">' +
-          svgIcon("download", 15) + "</button>") +
+          svgIcon("download", 15) + "</button>" +
+          (isTextFile(entry) ?
+            '<button class="icon-btn" data-act="edit" title="用编辑器打开" aria-label="编辑">' +
+            svgIcon("write", 15) + "</button>" : "")) +
         '<button class="icon-btn" data-act="rename" title="重命名" aria-label="重命名">' +
         svgIcon("edit", 15) + "</button>" +
         '<button class="icon-btn" data-act="remove" title="删除" aria-label="删除">' +
@@ -252,6 +276,13 @@
           const action = button.dataset.act;
           if (action === "download") downloadEntry(targetPath);
           else if (action === "preview") previewEntry(entry, targetPath);
+          else if (action === "edit") {
+            if (entry.size > MAX_EDIT_TEXT) {
+              toast("文件超过 " + formatSize(MAX_EDIT_TEXT) + "，请下载后用本地编辑器打开", "error");
+              return;
+            }
+            openEditor(entry, targetPath);
+          }
           else if (action === "rename") renameEntry(entry, targetPath);
           else if (action === "remove") removeEntry(entry, targetPath);
         });
@@ -370,26 +401,12 @@
       return;
     }
     if (kind === "text") {
-      try {
-        const response = await fetch(streamUrl, { credentials: "same-origin" });
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        const length = Number(response.headers.get("content-length") || "0");
-        if (length > MAX_TEXT_PREVIEW) {
-          showFallback();
-          return;
-        }
-        const text = await response.text();
-        if (text.length > MAX_TEXT_PREVIEW) {
-          showFallback();
-          return;
-        }
-        const pre = document.createElement("pre");
-        pre.style.cssText = "margin:0;padding:18px;font-size:12.5px;line-height:1.7;" +
-          "color:#d7def8;white-space:pre-wrap;word-break:break-all;overflow:auto;max-width:100%;";
-        pre.textContent = text;
-        body.appendChild(pre);
-      } catch (error) {
+      modal.classList.add("hidden");
+      if (entry.size <= MAX_EDIT_TEXT) {
+        openEditor(entry, segments);
+      } else {
         showFallback();
+        modal.classList.remove("hidden");
       }
       return;
     }
@@ -659,6 +676,544 @@
     $("folder-input").value = "";
   }
 
+  /* ---------------- 文档编辑器（文本读写） ---------------- */
+  async function saveTextContent(segments, text) {
+    const response = await fetch("/api/drive/write?path=" + relPath(segments), {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: new Blob([text], { type: "application/octet-stream" })
+    });
+    if (!response.ok) {
+      let message = "HTTP " + response.status;
+      try {
+        const payload = await response.json();
+        if (payload && payload.error) message = payload.error;
+      } catch (ignored) { /* 保留默认错误 */ }
+      throw new ApiError(response.status, message);
+    }
+    return true;
+  }
+
+  function updateEditorFooter() {
+    const editor = state.editor;
+    const area = $("editor-textarea");
+    const status = $("editor-status");
+    const saveBtn = $("editor-save-btn");
+    if (!editor) {
+      status.textContent = "就绪";
+      return;
+    }
+    const dirty = area.value !== editor.savedText;
+    editor.text = area.value;
+    editor.dirty = dirty;
+    saveBtn.disabled = !dirty;
+    saveBtn.textContent = dirty ? "保存 ●" : "已保存";
+    const chars = area.value.length;
+    status.textContent = (dirty ? "有未保存的修改 · " : "已保存 · ") +
+      (editor.segments.join("/") || "根目录") + " · " + chars + " 字";
+  }
+
+  async function openEditor(entry, segments) {
+    if (state.editor && state.editor.dirty &&
+        !window.confirm("当前文档有未保存修改，先关闭再打开新文档？")) {
+      return;
+    }
+    const modal = $("editor-modal");
+    const area = $("editor-textarea");
+    $("editor-title").textContent = entry.name;
+    $("editor-path").textContent = segments.join(" / ") || "根目录";
+    $("editor-preview").classList.add("hidden");
+    $("editor-preview-btn").textContent = "预览";
+    $("editor-body").classList.remove("split");
+    modal.classList.remove("hidden");
+    area.value = "正在读取文件…";
+    area.readOnly = true;
+    state.editor = null;
+    try {
+      const response = await fetch(entryUrl("stream", segments), {
+        credentials: "same-origin"
+      });
+      if (!response.ok) throw new ApiError(response.status, "HTTP " + response.status);
+      const text = await response.text();
+      if (text.length > MAX_EDIT_TEXT) {
+        throw new ApiError(413, "文本超过 " + formatSize(MAX_EDIT_TEXT));
+      }
+      state.editor = {
+        name: entry.name,
+        segments: segments.slice(),
+        savedText: text,
+        text,
+        dirty: false
+      };
+      area.value = text;
+      area.readOnly = false;
+      updateEditorFooter();
+      area.focus();
+      area.setSelectionRange(text.length, text.length);
+    } catch (error) {
+      modal.classList.add("hidden");
+      area.readOnly = false;
+      toast("打开文档失败：" + (error.message || error), "error");
+    }
+  }
+
+  function closeEditor() {
+    if (!state.editor) return true;
+    if (state.editor.dirty && !window.confirm("文档有未保存修改，确定关闭吗？")) {
+      return false;
+    }
+    $("editor-modal").classList.add("hidden");
+    $("editor-textarea").value = "";
+    $("editor-preview").innerHTML = "";
+    state.editor = null;
+    updateEditorFooter();
+    return true;
+  }
+
+  async function saveEditor() {
+    const editor = state.editor;
+    if (!editor) return;
+    const area = $("editor-textarea");
+    const button = $("editor-save-btn");
+    button.disabled = true;
+    const original = button.textContent;
+    button.textContent = "保存中…";
+    try {
+      await saveTextContent(editor.segments, area.value);
+      editor.savedText = area.value;
+      editor.text = area.value;
+      editor.dirty = false;
+      toast("文档已保存", "ok");
+      loadDir(state.cwd, true);
+    } catch (error) {
+      toast("保存失败：" + error.message, "error");
+    } finally {
+      button.textContent = original;
+      updateEditorFooter();
+    }
+  }
+
+  function toggleEditorPreview() {
+    const wrap = $("editor-body");
+    const panel = $("editor-preview");
+    const button = $("editor-preview-btn");
+    const on = panel.classList.contains("hidden");
+    if (on) {
+      panel.innerHTML = renderMarkdown(state.editor ? state.editor.text : $("editor-textarea").value);
+      wrap.classList.add("split");
+      button.textContent = "编辑";
+    } else {
+      panel.classList.add("hidden");
+      wrap.classList.remove("split");
+      button.textContent = "预览";
+    }
+  }
+
+  async function newDocument() {
+    let name = window.prompt("新文档名称（默认 .md）：", "未命名文档.md");
+    if (name == null) return;
+    name = name.trim();
+    if (!name) return;
+    if (name.includes("/") || name.includes("\\")) {
+      toast("名称不能包含 / 或 \\", "error");
+      return;
+    }
+    const ext = textFileExt(name);
+    if (!TEXT_EXT.has(ext)) {
+      toast("文档必须是文本格式（.md .txt .json .py …）", "error");
+      return;
+    }
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    let finalName = name;
+    for (let i = 2; i < 200; i += 1) {
+      const probe = finalName;
+      try {
+        const stat = await api("/api/drive/stat?path=" + relPath(state.cwd.concat(probe)));
+        if (!stat || !stat.exists) break;
+      } catch (error) {
+        if (error.status === 403) { /* 不存在等同 */ }
+        else if (error.status !== 404) throw error;
+        break;
+      }
+      finalName = stem + " (" + i + ")" + (ext ? "." + ext : "");
+    }
+    const segments = state.cwd.concat(finalName);
+    try {
+      await saveTextContent(segments, "");
+      toast("已创建「" + finalName + "」", "ok");
+      await loadDir(state.cwd, true);
+      await openEditor({ name: finalName, type: "file", size: 0 }, segments);
+    } catch (error) {
+      toast("创建文档失败：" + error.message, "error");
+    }
+  }
+
+  /* ---------------- 极简 Markdown 渲染 ---------------- */
+  function mdEscape(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+  }
+
+  function mdInline(text) {
+    let out = mdEscape(text);
+    out = out.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    out = out.replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<img src="$2" alt="$1" loading="lazy">');
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    out = out.replace(/(^|[^\w*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    return out;
+  }
+
+  function renderMarkdown(md) {
+    if (!md) return '<div class="md-doc"><p class="md-empty">空文档</p></div>';
+    const lines = String(md).replace(/\r\n?/g, "\n").split("\n");
+    let html = "";
+    let inFence = false;
+    const fence = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const fenceStart = /^```/.test(line.trim());
+      if (fenceStart) {
+        if (!inFence) {
+          inFence = true;
+          fence.length = 0;
+        } else {
+          inFence = false;
+          html += '<pre class="md-fence"><code>' + fence.map(mdEscape).join("\n") +
+            "</code></pre>";
+        }
+        continue;
+      }
+      if (inFence) {
+        fence.push(line);
+        continue;
+      }
+      if (!line.trim()) continue;
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      if (heading) {
+        const level = heading[1].length;
+        html += "<h" + level + ">" + mdInline(heading[2]) + "</h" + level + ">";
+        continue;
+      }
+      if (/^\s*[-*+]\s+/.test(line)) {
+        html += "<ul><li>" + mdInline(line.replace(/^\s*[-*+]\s+/, "")) + "</li></ul>";
+        continue;
+      }
+      if (/^\s*\d+[.)]\s+/.test(line)) {
+        html += "<ol><li>" + mdInline(line.replace(/^\s*\d+[.)]\s+/, "")) + "</li></ol>";
+        continue;
+      }
+      if (/^>\s?/.test(line)) {
+        html += "<blockquote>" + mdInline(line.replace(/^>\s?/, "")) + "</blockquote>";
+        continue;
+      }
+      if (/^(\s*[-_*]\s*){3,}$/.test(line)) {
+        html += "<hr>";
+        continue;
+      }
+      let paragraph = line;
+      while (i + 1 < lines.length && lines[i + 1].trim() &&
+          !/^(#{1,6}\s|>\s?|\s*[-*+]\s+|\s*\d+[.)]\s+|```)/.test(lines[i + 1])) {
+        paragraph += "\n" + lines[++i];
+      }
+      html += "<p>" + mdInline(paragraph) + "</p>";
+    }
+    if (inFence) {
+      html += '<pre class="md-fence"><code>' + fence.map(mdEscape).join("\n") + "</code></pre>";
+    }
+    return '<div class="md-doc">' + html + "</div>";
+  }
+
+  /* ---------------- AI 助手 ---------------- */
+  const AI_PRESETS = {
+    polish: "请润色并改写以下文本，保留原有信息，让表达更清晰、自然、有文采；直接输出修改后的完整文本，不要解释。",
+    fix: "请修正以下文本中的错别字和不通顺的句子，不要改变原意，直接输出完整修正结果。",
+    summary: "请用中文总结以下文本的要点，使用简洁的列表输出。",
+    zh: "请把以下内容翻译成中文，保留 Markdown 结构，直接输出译文。",
+    en: "Please translate the following content into natural English, keep Markdown structure, and output only the translation.",
+    json: "请把以下内容整理成结构清晰的 JSON，直接输出 JSON 代码块。"
+  };
+
+  let aiStatusCache = null;
+  async function refreshAiStatus() {
+    const chip = $("ai-model-chip");
+    const status = $("ai-status");
+    try {
+      const payload = await api("/api/ai/status");
+      aiStatusCache = payload;
+      const configured = payload && payload.configured;
+      chip.textContent = configured
+        ? "已连接 · " + (payload.model || "")
+        : "未配置 AI Key";
+      if (status && !$("ai-modal").classList.contains("hidden")) {
+        status.textContent = configured ? "" : "请先点击右上角齿轮配置 AI API";
+      }
+      return payload;
+    } catch (error) {
+      aiStatusCache = null;
+      chip.textContent = "sidecar 未启动";
+      if (status) status.textContent = error.message;
+      return null;
+    }
+  }
+
+  async function openAiPalette() {
+    if ($("view-app").classList.contains("hidden")) return;
+    state.aiResult = "";
+    $("ai-prompt").value = "";
+    $("ai-result-wrap").classList.add("hidden");
+    $("ai-apply-btn").classList.add("hidden");
+    $("ai-append-btn").classList.add("hidden");
+    $("ai-copy-btn").classList.add("hidden");
+    $("ai-run-btn").disabled = false;
+    $("ai-status").textContent = "正在生成时请勿关闭…";
+
+    const area = $("editor-textarea");
+    let aiDoc = null;
+    const editorOpen = state.editor && !$("editor-modal").classList.contains("hidden");
+    if (editorOpen) {
+      const start = area.selectionStart;
+      const end = area.selectionEnd;
+      const selected = start !== end ? area.value.slice(start, end) : "";
+      aiDoc = {
+        name: state.editor.name,
+        segments: state.editor.segments.slice(),
+        text: area.value,
+        selected
+      };
+    }
+    state.aiDoc = aiDoc;
+    $("ai-context-bar").classList.toggle("hidden", !aiDoc);
+    if (aiDoc) {
+      $("ai-context-name").textContent = aiDoc.name +
+        (aiDoc.selected ? "（选中 " + aiDoc.selected.length + " 字）" : "（整篇文档）");
+    }
+    $("ai-use-doc").checked = !!aiDoc;
+    $("ai-modal").classList.remove("hidden");
+    $("ai-prompt").focus();
+    refreshAiStatus();
+  }
+
+  function closeAiPalette() {
+    $("ai-modal").classList.add("hidden");
+    state.aiDoc = null;
+    state.aiResult = "";
+    $("ai-result-wrap").classList.add("hidden");
+    $("ai-run-btn").disabled = false;
+  }
+
+  function fillAiPreset(key) {
+    const prompt = AI_PRESETS[key];
+    if (!prompt) return;
+    $("ai-prompt").value = prompt;
+    $("ai-prompt").focus();
+  }
+
+  function aiContextText() {
+    if (!state.aiDoc || !$("ai-use-doc").checked) return "";
+    const base = state.aiDoc.selected || state.aiDoc.text || "";
+    return base.slice(0, AI_MAX_CONTEXT);
+  }
+
+  async function runAi() {
+    const prompt = $("ai-prompt").value.trim();
+    if (!prompt) {
+      toast("先输入你想让 AI 做什么", "error");
+      return;
+    }
+    const button = $("ai-run-btn");
+    const status = $("ai-status");
+    button.disabled = true;
+    status.textContent = "AI 思考中（大文档可能要十几秒）…";
+    try {
+      const context = aiContextText();
+      const messages = [
+        {
+          role: "system",
+          content: "你是藤のnetdisk 内置的写作与编辑助手。用户可能给你整篇文档或选中片段。" +
+            "除非指令另有要求，请直接输出可落盘的完整结果，不要寒暄、不要加解释前缀。"
+        },
+        {
+          role: "user",
+          content: prompt +
+            (context ? "\n\n以下是被编辑文档" +
+              (state.aiDoc.name ? "「" + state.aiDoc.name + "」" : "") + "的内容：\n```\n" +
+              context + "\n```" : "")
+        }
+      ];
+      const payload = await api("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, temperature: 0.4, maxTokens: 4096 })
+      });
+      const content = (payload && payload.content) || "";
+      state.aiResult = content;
+      $("ai-result-text").textContent = content || "（AI 返回了空内容）";
+      $("ai-result-wrap").classList.remove("hidden");
+      $("ai-copy-btn").classList.remove("hidden");
+      const withDoc = !!state.aiDoc;
+      $("ai-apply-btn").classList.toggle("hidden", !withDoc);
+      $("ai-append-btn").classList.toggle("hidden", !withDoc);
+      status.textContent = payload && payload.model ? "完成 · " + payload.model : "完成";
+    } catch (error) {
+      status.textContent = error.message;
+      $("ai-result-wrap").classList.remove("hidden");
+      $("ai-result-text").textContent = "请求失败：" + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function applyAiResult(mode) {
+    if (!state.aiDoc || !state.aiResult) {
+      toast("请先在文档编辑器里打开一个文件", "error");
+      return;
+    }
+    const segments = state.aiDoc.segments;
+    const result = state.aiResult;
+    const current = (state.editor && state.editor.name === state.aiDoc.name &&
+      state.editor.segments.join("/") === segments.join("/"))
+      ? state.editor.text : state.aiDoc.text;
+    const next = mode === "append"
+      ? ((current || "").trimEnd() ? current.trimEnd() + "\n\n" + result : result)
+      : result;
+    try {
+      await saveTextContent(segments, next);
+      if (state.editor && state.editor.name === state.aiDoc.name &&
+          state.editor.segments.join("/") === segments.join("/")) {
+        state.editor.savedText = next;
+        state.editor.text = next;
+        $("editor-textarea").value = next;
+        updateEditorFooter();
+      }
+      toast(mode === "append" ? "AI 结果已追加到文末" : "AI 结果已保存到文档", "ok");
+      loadDir(state.cwd, true);
+      closeAiPalette();
+    } catch (error) {
+      toast("写入失败：" + error.message, "error");
+    }
+  }
+
+  async function openAiConfig() {
+    $("ai-config-error").classList.add("hidden");
+    $("ai-config-status").textContent = "";
+    const payload = await refreshAiStatus();
+    $("ai-base-url").value = (payload && payload.baseUrl) || "https://api.openai.com/v1";
+    $("ai-model").value = (payload && payload.model) || "";
+    $("ai-api-key").value = "";
+    $("ai-key-clear").checked = false;
+    $("ai-config-modal").classList.remove("hidden");
+  }
+
+  function closeAiConfig() {
+    $("ai-config-modal").classList.add("hidden");
+  }
+
+  async function saveAiConfig() {
+    const error = $("ai-config-error");
+    error.classList.add("hidden");
+    const body = {
+      baseUrl: $("ai-base-url").value.trim(),
+      model: $("ai-model").value.trim()
+    };
+    const key = $("ai-api-key").value.trim();
+    if (key) body.apiKey = key;
+    if ($("ai-key-clear").checked) body.apiKey = "";
+    if (!body.baseUrl || !body.model) {
+      error.textContent = "API 地址和模型不能为空";
+      error.classList.remove("hidden");
+      return;
+    }
+    const button = $("ai-config-save");
+    button.disabled = true;
+    try {
+      const payload = await api("/api/ai/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      $("ai-config-status").textContent =
+        (payload && payload.configured ? "已保存并生效" : "已保存（未填写 Key）") + " · " +
+        (payload && payload.model || "");
+      toast("AI 配置已保存", "ok");
+      refreshAiStatus();
+    } catch (err) {
+      error.textContent = err.message;
+      error.classList.remove("hidden");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function copyAiResult() {
+    if (!state.aiResult) return;
+    try {
+      await navigator.clipboard.writeText(state.aiResult);
+      toast("已复制 AI 输出", "ok");
+    } catch (error) {
+      toast("复制失败，请手动选择复制", "error");
+    }
+  }
+
+  /* ---------------- 第三方登录 ---------------- */
+  let oauthRefreshing = null;
+  function refreshOAuth() {
+    if (oauthRefreshing) return oauthRefreshing;
+    oauthRefreshing = (async () => {
+      try {
+        const payload = await api("/api/oauth/status");
+        state.oauth = {
+          github: !!(payload && payload.github),
+          apple: !!(payload && payload.apple)
+        };
+      } catch (error) {
+        state.oauth = { github: false, apple: false };
+      } finally {
+        oauthRefreshing = null;
+      }
+      const anyConfigured = state.oauth.github || state.oauth.apple;
+      $("oauth-area").classList.toggle("hidden", !anyConfigured);
+      $("oauth-github-btn").disabled = !state.oauth.github;
+      $("oauth-apple-btn").disabled = !state.oauth.apple;
+      $("oauth-github-btn").querySelector("span").textContent = state.oauth.github
+        ? "GitHub 登录" : "GitHub 未配置";
+      $("oauth-apple-btn").querySelector("span").textContent = state.oauth.apple
+        ? "Apple 登录" : "Apple 未配置";
+    })();
+    return oauthRefreshing;
+  }
+
+  async function oauthBegin(provider) {
+    const button = provider === "github" ? $("oauth-github-btn") : $("oauth-apple-btn");
+    const label = button.querySelector("span");
+    const original = label.textContent;
+    button.disabled = true;
+    label.textContent = "跳转中…";
+    try {
+      const response = await fetch("/api/oauth/" + provider + "/begin", {
+        credentials: "same-origin"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || !payload.authorizeUrl) {
+        throw new ApiError(response.status,
+          (payload && payload.error) || "第三方登录入口不可用");
+      }
+      window.location.assign(payload.authorizeUrl);
+    } catch (error) {
+      $("login-error").textContent = error.message;
+      $("login-error").classList.remove("hidden");
+      toast(error.message, "error");
+      button.disabled = false;
+      label.textContent = original;
+    }
+  }
+
   /* ---------------- 登录 ---------------- */
   async function handleLogin(event) {
     event.preventDefault();
@@ -701,11 +1256,21 @@
     const viewMode = $("view-" + state.view);
     $("view-list").classList.toggle("active", state.view === "list");
     $("view-grid").classList.toggle("active", state.view === "grid");
+    const params = new URLSearchParams(location.search);
+    const oauthError = params.get("oauth_error");
+    if (oauthError) {
+      history.replaceState(null, "", location.pathname);
+    }
     try {
       const me = await api("/api/me");
       showApp(me.username);
     } catch (error) {
       showLogin();
+      if (oauthError) {
+        const message = $("login-error");
+        message.textContent = "第三方登录失败：" + oauthError;
+        message.classList.remove("hidden");
+      }
     }
   }
 
@@ -713,7 +1278,10 @@
   function bindEvents() {
     $("login-form").addEventListener("submit", handleLogin);
     $("logout-btn").addEventListener("click", handleLogout);
+    $("oauth-github-btn").addEventListener("click", () => oauthBegin("github"));
+    $("oauth-apple-btn").addEventListener("click", () => oauthBegin("apple"));
     $("mkdir-btn").addEventListener("click", createFolder);
+    $("new-doc-btn").addEventListener("click", newDocument);
     $("refresh-btn").addEventListener("click", () => loadDir(state.cwd, true));
     $("file-input").addEventListener("change", () => queueFiles($("file-input").files, state.cwd));
     $("folder-input").addEventListener("change", () => {
@@ -771,6 +1339,43 @@
       $("upload-list").classList.toggle("hidden");
     });
 
+    $("ai-open-btn").addEventListener("click", openAiPalette);
+    $("editor-ai-btn").addEventListener("click", openAiPalette);
+    $("editor-preview-btn").addEventListener("click", toggleEditorPreview);
+    $("editor-save-btn").addEventListener("click", saveEditor);
+    $("editor-textarea").addEventListener("input", updateEditorFooter);
+    $("editor-textarea").addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveEditor();
+      }
+    });
+    document.querySelectorAll("#editor-modal [data-close-editor]").forEach((element) => {
+      element.addEventListener("click", () => closeEditor());
+    });
+
+    $("ai-run-btn").addEventListener("click", runAi);
+    $("ai-copy-btn").addEventListener("click", copyAiResult);
+    $("ai-apply-btn").addEventListener("click", () => applyAiResult("replace"));
+    $("ai-append-btn").addEventListener("click", () => applyAiResult("append"));
+    $("ai-config-open").addEventListener("click", openAiConfig);
+    $("ai-config-save").addEventListener("click", saveAiConfig);
+    document.querySelectorAll("#ai-presets .chip").forEach((chip) => {
+      chip.addEventListener("click", () => fillAiPreset(chip.dataset.preset));
+    });
+    document.querySelectorAll("#ai-modal [data-close-ai]").forEach((element) => {
+      element.addEventListener("click", closeAiPalette);
+    });
+    document.querySelectorAll("#ai-config-modal [data-close-config]").forEach((element) => {
+      element.addEventListener("click", closeAiConfig);
+    });
+    $("ai-prompt").addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        runAi();
+      }
+    });
+
     document.querySelectorAll("#preview-modal [data-close]").forEach((element) => {
       element.addEventListener("click", () => {
         $("preview-modal").classList.add("hidden");
@@ -779,9 +1384,30 @@
       });
     });
     document.addEventListener("keydown", (event) => {
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === "j") {
+        event.preventDefault();
+        if ($("view-app").classList.contains("hidden")) return;
+        if ($("ai-modal").classList.contains("hidden")) {
+          openAiPalette();
+        } else {
+          closeAiPalette();
+        }
+        return;
+      }
       if (event.key === "Escape") {
-        $("preview-modal").classList.add("hidden");
-        $("preview-body").innerHTML = "";
+        if (!$("ai-config-modal").classList.contains("hidden")) {
+          closeAiConfig();
+        } else if (!$("ai-modal").classList.contains("hidden")) {
+          closeAiPalette();
+        } else if (!$("editor-modal").classList.contains("hidden")) {
+          closeEditor();
+        } else {
+          $("preview-modal").classList.add("hidden");
+          $("preview-body").innerHTML = "";
+          $("preview-body").src = "";
+        }
       }
     });
 

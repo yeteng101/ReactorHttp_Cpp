@@ -14,6 +14,7 @@ struct ServerContext
     bool driveEnabled = false;
     std::string driveRoot;
     std::string usersFile;
+    std::string sidecarUrl;   // 由 main 从 ServerConfig 拷入
     UserStore users;
     SessionStore sessions;
 };

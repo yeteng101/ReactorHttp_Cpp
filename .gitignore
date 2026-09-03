@@ -6,3 +6,6 @@ build/
 data/
 users.conf
 cookies.txt
+deploy/.env
+sidecar-config.json
+sidecar/__pycache__/

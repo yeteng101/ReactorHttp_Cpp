@@ -1,0 +1,19 @@
+{
+  "listen": "127.0.0.1:18666",
+  "publicBaseUrl": "http://127.0.0.1:10000",
+  "ai": {
+    "baseUrl": "https://api.openai.com/v1",
+    "apiKey": "",
+    "model": "gpt-4o-mini"
+  },
+  "github": {
+    "clientId": "",
+    "clientSecret": ""
+  },
+  "apple": {
+    "serviceId": "",
+    "teamId": "",
+    "keyId": "",
+    "privateKeyPath": ""
+  }
+}

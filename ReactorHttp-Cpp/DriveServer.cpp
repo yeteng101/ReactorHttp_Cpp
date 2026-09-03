@@ -3,8 +3,10 @@
 #include "HttpResponse.h"
 #include "Log.h"
 #include "ServerContext.h"
+#include "SidecarClient.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -24,6 +26,8 @@ namespace fs = std::filesystem;
 namespace
 {
 constexpr uint64_t MaxRequestedChunk = 64u * 1024 * 1024;   // 单次上传分片上限（与解析器一致）
+constexpr std::size_t MaxTextWrite = 16u * 1024 * 1024;     // 文档整体写入上限
+std::atomic<unsigned long long> g_writeTempCounter{0};
 
 void setResponse(HttpResponse* response, StatusCode status, const std::string& contentType,
     const std::string& body)
@@ -569,6 +573,141 @@ std::string percentEncode(const std::string& value)
     return encoded;
 }
 
+bool safeOAuthUsername(const std::string& username)
+{
+    if (username.empty() || username == "." || username == "..")
+    {
+        return false;
+    }
+    for (unsigned char ch : username)
+    {
+        const bool allowed =
+            (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' || ch == '.';
+        if (!allowed)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// 浏览器侧请求 /api/oauth/... 或 /api/ai/... 时，C++ 服务器把同路径
+// 去掉 /api 前缀后转发给本地 sidecar，例如 /api/ai/status -> /ai/status
+std::string sidecarPathAndQuery(const std::string& requestPath, const HttpRequest& request)
+{
+    std::string path = requestPath.substr(4);
+    const std::string& url = request.url();
+    const std::size_t question = url.find('?');
+    if (question != std::string::npos)
+    {
+        path += url.substr(question);
+    }
+    return path;
+}
+
+void relaySidecar(ServerContext& context, HttpRequest& request, HttpResponse& response,
+    const std::string& requestPath)
+{
+    SidecarResult result;
+    if (!sidecarCall(context, request.method(), sidecarPathAndQuery(requestPath, request),
+        request.getHeader("Content-Type"), request.getBody(), result))
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable,
+            "AI/OAuth sidecar is not running: " + result.error);
+        return;
+    }
+    response.reset();
+    response.setStatusCode(static_cast<StatusCode>(result.statusCode));
+    response.addHeader("Content-Type",
+        result.contentType.empty() ? "application/json; charset=utf-8" : result.contentType);
+    response.setBody(result.body);
+}
+
+void redirectHome(HttpResponse& response, const std::string& oauthError)
+{
+    response.reset();
+    response.setStatusCode(StatusCode::MovedTemporarily);
+    if (oauthError.empty())
+    {
+        response.addHeader("Location", "/");
+    }
+    else
+    {
+        response.addHeader("Location", "/?oauth_error=" + percentEncode(oauthError));
+    }
+}
+
+void setOauthSessionCookie(HttpRequest& request, HttpResponse& response,
+    const std::string& token, ServerContext& context)
+{
+    const int hours = context.sessions.sessionHours();
+    std::string cookie =
+        "sid=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" +
+        std::to_string(static_cast<long long>(hours) * 3600);
+    const std::string forwardedProto = request.getHeader("X-Forwarded-Proto");
+    if (strncasecmp(forwardedProto.c_str(), "https", 5) == 0)
+    {
+        cookie += "; Secure";
+    }
+    response.addHeader("Set-Cookie", cookie);
+}
+
+void handleOAuthCallback(ServerContext& context, HttpRequest& request, HttpResponse& response,
+    const std::string& requestPath)
+{
+    SidecarResult result;
+    if (!sidecarCall(context, request.method(), sidecarPathAndQuery(requestPath, request),
+        request.getHeader("Content-Type"), request.getBody(), result))
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable,
+            "AI/OAuth sidecar is not running: " + result.error);
+        return;
+    }
+
+    if (!result.ok)
+    {
+        std::string message = jsonStringValue(result.body, "error");
+        if (message.empty())
+        {
+            message = "第三方登录失败（HTTP " + std::to_string(result.statusCode) + "）";
+        }
+        redirectHome(response, message);
+        return;
+    }
+
+    std::string username = jsonStringValue(result.body, "username");
+    std::string origin = jsonStringValue(result.body, "origin");
+    if (!safeOAuthUsername(username))
+    {
+        redirectHome(response, "第三方登录返回了无效的用户名");
+        return;
+    }
+    if (origin.empty())
+    {
+        origin = username;
+    }
+
+    std::string userError;
+    if (!context.users.ensureOAuthUser(username, origin, userError))
+    {
+        redirectHome(response, userError);
+        return;
+    }
+    std::error_code homeError;
+    const std::string home = homeRootFor(context, username);
+    if ((!fs::create_directories(home, homeError) && homeError) ||
+        !fs::is_directory(home, homeError))
+    {
+        redirectHome(response, "无法创建用户目录");
+        return;
+    }
+
+    const std::string token = context.sessions.create(username);
+    redirectHome(response, "");
+    setOauthSessionCookie(request, response, token, context);
+}
+
 void handleLogin(ServerContext& context, HttpRequest& request, HttpResponse& response)
 {
     if (strcasecmp(request.method().c_str(), "POST") != 0)
@@ -888,6 +1027,91 @@ void handleUpload(ServerContext& context, HttpRequest& request, HttpResponse& re
     response.addHeader("Upload-Offset", std::to_string(newSize));
 }
 
+// 文档整体原子写入：先写同目录临时文件再 rename 覆盖，断网/失败不会弄坏原文件
+void handleWrite(ServerContext& context, HttpRequest& request, HttpResponse& response,
+    const std::string& driveRoot)
+{
+    (void)context;
+    if (strcasecmp(request.method().c_str(), "PUT") != 0)
+    {
+        setJsonError(&response, StatusCode::MethodNotAllowed, "method not allowed");
+        return;
+    }
+    const std::string rel = queryValue(request.url(), "path");
+    fs::path resolved;
+    std::string error;
+    if (!resolvePath(driveRoot, rel, resolved, error))
+    {
+        setJsonError(&response, StatusCode::Forbidden, error);
+        return;
+    }
+    std::error_code statError;
+    if (fs::exists(resolved, statError) && fs::is_directory(resolved, statError))
+    {
+        setJsonError(&response, StatusCode::Conflict, "cannot write over a directory");
+        return;
+    }
+
+    const std::string& body = request.getBody();
+    if (body.size() > MaxTextWrite)
+    {
+        setJsonError(&response, StatusCode::PayloadTooLarge,
+            "text file too large (limit 16MB)");
+        return;
+    }
+
+    std::error_code parentError;
+    fs::create_directories(resolved.parent_path(), parentError);
+    char tempName[192];
+    snprintf(tempName, sizeof(tempName), ".fuji-write-%ld-%llu.tmp",
+        static_cast<long>(getpid()),
+        static_cast<unsigned long long>(g_writeTempCounter.fetch_add(1)));
+    const fs::path tempPath = resolved.parent_path() / tempName;
+
+    const int fd = open(tempPath.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (fd < 0)
+    {
+        Log::error("write open temp failed: %s (%s)", tempPath.c_str(), strerror(errno));
+        setJsonError(&response, StatusCode::InternalServerError, "cannot create temp file");
+        return;
+    }
+    std::size_t written = 0;
+    while (written < body.size())
+    {
+        ssize_t count;
+        do
+        {
+            count = pwrite(fd, body.data() + written, body.size() - written,
+                static_cast<off_t>(written));
+        } while (count == -1 && errno == EINTR);
+        if (count <= 0)
+        {
+            close(fd);
+            fs::remove(tempPath);
+            setJsonError(&response, StatusCode::InternalServerError, "write failed");
+            return;
+        }
+        written += static_cast<std::size_t>(count);
+    }
+    if (close(fd) != 0)
+    {
+        fs::remove(tempPath);
+        setJsonError(&response, StatusCode::InternalServerError, "close failed");
+        return;
+    }
+
+    std::error_code renameError;
+    fs::rename(tempPath, resolved, renameError);
+    if (renameError)
+    {
+        fs::remove(tempPath);
+        setJsonError(&response, StatusCode::InternalServerError, "replace file failed");
+        return;
+    }
+    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
+        "{\"size\":" + std::to_string(body.size()) + "}");
+}
+
 void handleRemove(ServerContext& context, HttpRequest& request, HttpResponse& response,
     const std::string& driveRoot)
 {
@@ -1042,6 +1266,23 @@ bool handle(ServerContext& context, const std::string& requestPath, HttpRequest&
         return true;
     }
 
+    // OAuth：begin/status 由前端 fetch，callback 由 GitHub/Apple 302/form 回跳。
+    // callback 成功后会创建/确认 OAuth 账号并种会话 Cookie，然后重定向回首页。
+    if (requestPath.compare(0, 11, "/api/oauth/") == 0)
+    {
+        const bool isCallback = requestPath == "/api/oauth/github/callback" ||
+            requestPath == "/api/oauth/apple/callback";
+        if (isCallback)
+        {
+            handleOAuthCallback(context, request, response, requestPath);
+        }
+        else
+        {
+            relaySidecar(context, request, response, requestPath);
+        }
+        return true;
+    }
+
     // 以下全部需要登录
     const std::string username = currentUser(context, request);
     if (username.empty())
@@ -1059,6 +1300,12 @@ bool handle(ServerContext& context, const std::string& requestPath, HttpRequest&
     {
         setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
             "{\"username\":\"" + jsonEscape(username) + "\"}");
+        return true;
+    }
+    // AI 网关（配置/状态/聊天）需要登录后通过 sidecar 转发
+    if (requestPath.compare(0, 8, "/api/ai/") == 0)
+    {
+        relaySidecar(context, request, response, requestPath);
         return true;
     }
     // 所有文件操作都限制在登录用户自己的家目录下
@@ -1096,6 +1343,10 @@ bool handle(ServerContext& context, const std::string& requestPath, HttpRequest&
     else if (requestPath == "/api/drive/rename")
     {
         handleRename(context, request, response, driveRoot);
+    }
+    else if (requestPath == "/api/drive/write")
+    {
+        handleWrite(context, request, response, driveRoot);
     }
     else if (requestPath == "/api/drive/download")
     {

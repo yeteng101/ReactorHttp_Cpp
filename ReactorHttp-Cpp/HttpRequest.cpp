@@ -845,12 +845,13 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     const bool isPatch = strcasecmp(m_method.c_str(), "PATCH") == 0;
     const bool isDelete = strcasecmp(m_method.c_str(), "DELETE") == 0;
     const bool isPost = strcasecmp(m_method.c_str(), "POST") == 0;
+    const bool isPut = strcasecmp(m_method.c_str(), "PUT") == 0;
     if (!isOptions && !isPatch && !isDelete &&
-        !isPost && strcasecmp(m_method.c_str(), "GET") != 0 && !isHead)
+        !isPost && !isPut && strcasecmp(m_method.c_str(), "GET") != 0 && !isHead)
     {
         setResponse(response, StatusCode::MethodNotAllowed, "text/plain; charset=utf-8",
             "Method Not Allowed\n");
-        response->addHeader("Allow", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
+        response->addHeader("Allow", "GET, HEAD, POST, PUT, OPTIONS, PATCH, DELETE");
         return false;
     }
     response->setHeadOnly(isHead);
@@ -859,8 +860,8 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     {
         // CORS 预检：不校验具体路径，也不返回正文
         response->setStatusCode(StatusCode::NoContent);
-        response->addHeader("Allow", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
-        response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
+        response->addHeader("Allow", "GET, HEAD, POST, PUT, OPTIONS, PATCH, DELETE");
+        response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, OPTIONS, PATCH, DELETE");
         const string requestedHeaders = getHeader("Access-Control-Request-Headers");
         response->addHeader("Access-Control-Allow-Headers",
             requestedHeaders.empty() ? "Content-Type, Range" : requestedHeaders);
@@ -895,7 +896,9 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     if (m_context != nullptr && m_context->driveEnabled &&
         (requestPath == "/api/login" || requestPath == "/api/logout" ||
          requestPath == "/api/me" || requestPath.compare(0, 11, "/api/drive/") == 0 ||
-         requestPath.compare(0, 10, "/api/files") == 0))
+         requestPath.compare(0, 10, "/api/files") == 0 ||
+         requestPath.compare(0, 11, "/api/oauth/") == 0 ||
+         requestPath.compare(0, 8, "/api/ai/") == 0))
     {
         return Drive::handle(*m_context, requestPath, *this, *response);
     }

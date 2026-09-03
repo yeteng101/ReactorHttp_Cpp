@@ -1,4 +1,4 @@
-# AuroraDrive（ReactorHttp-Cpp 网盘）生产部署指南
+# 藤のnetdisk（ReactorHttp-Cpp）生产部署指南
 
 本文覆盖三种场景，任选其一：
 
@@ -111,6 +111,62 @@ docker compose ps
 然后在阿里云安全组放行 **10000** 端口，浏览器访问 `http://公网IP:10000`。
 （仅调试：HTTP 明文 + 无 HTTPS 时密码会明文传输，正式使用请用域名 + Caddy。）
 
+### 2.5 域名和 IP 的关系（必读）
+
+- **IP 是服务器的门牌号**，别人要访问你的网站，最后总得连到一个 IP。
+- **域名是给人记的名字**，DNS 系统负责把 `pan.example.com` 翻译成 IP。
+  A 记录写的就是「这个名字 → 哪个 IP」。
+- `172.16.0.0 ~ 172.31.255.255`（还有 `10.x`、`192.168.x`）是**私网地址**，
+  只能在内网（你家里 / 云厂商 VPC 内部）用，公网用户连不进去。
+  公网 IP 形如 `121.196.x.x`，才是阿里云给 ECS 的那一个。
+- 有了域名后不要访问 `http://IP:10000`，而是配好 Caddy 后访问
+  `https://你的域名`：域名负责好记 + 证书校验，Caddy 负责 HTTPS，IP 只躲在后面。
+
+### 2.6 文档编辑器 + AI 助手
+
+本分支前端已内置：
+
+- **在线文档编辑**：`.md/.txt/.json/.py/...` 点击文档图标即可编辑，`⌘/Ctrl+S` 保存；
+- **Markdown 预览**：编辑器右上角「预览」按钮；
+- **AI 助手**：`⌘/Ctrl+J` 在任意文档里召唤，可润色 / 改写 / 翻译 / 总结 /
+  自定义指令，结果一键「替换全文」或「插到文末」；
+- **AI 设置**：AI 面板右上角齿轮填写 OpenAI 兼容接口（OpenAI / DeepSeek /
+  通义 / Moonshot），API Key 只存服务器 sidecar，不下发浏览器。
+
+在 `deploy/.env` 里填（或用网页设置）：
+
+```bash
+AI_BASE_URL=https://api.openai.com/v1   # DeepSeek: https://api.deepseek.com/v1
+AI_MODEL=gpt-4o-mini                    # DeepSeek: deepseek-chat
+AI_API_KEY=sk-xxxxxxxx
+```
+
+### 2.7 GitHub / Apple 第三方登录
+
+先在 `.env` 中配置对应变量（见 `.env.example`），重启生效：
+
+```bash
+docker compose up -d
+docker compose logs -f sidecar   # 出现 listening 即成功
+```
+
+GitHub 注册（免费）：
+
+1. GitHub → Settings → Developer settings → OAuth Apps → New OAuth App；
+2. Homepage URL 填 `https://你的域名`；
+3. Authorization callback URL 填 `https://你的域名/api/oauth/github/callback`；
+4. 把 Client ID / Client Secret 填进 `.env` 的 `OAUTH_GITHUB_*`。
+
+Apple（需要 Apple Developer 会员）：
+
+1. developer.apple.com → Certificates/Identifiers → Services 里建 Service ID，
+   勾选 Sign in with Apple；
+2. 配置域名与回调 `https://你的域名/api/oauth/apple/callback`；
+3. 创建 Sign in with Apple Key（.p8），把 Team ID / Key ID / Service ID 和私钥
+   路径填进 `.env`，并把 p8 挂载进 sidecar 容器（docker-compose 里有注释示例）。
+
+登录页会出现对应按钮；首次第三方登录会自动创建该用户自己的网盘目录。
+
 ---
 
 ## 3. Windows 电脑 / Windows Server 部署
@@ -152,7 +208,8 @@ docker compose ps
   用 DDNS（如花生壳）+ 端口映射，或用 frp/Cloudflare Tunnel 把流量转发进来。
   域名解析到 DDNS 域名或隧道地址即可。
 - Docker Desktop 的 volume 实际存放在 WSL2 里；要备份/迁移数据卷时用
-  `docker compose down` 后复制 `docker volume inspect auroradrive_netdisk-data` 返回的挂载点目录。
+  `docker compose down` 后执行 `docker volume ls | grep netdisk-data`，
+  再用 `docker volume inspect <卷名>` 查看挂载点目录复制。
 
 ---
 
@@ -268,7 +325,7 @@ docker compose up -d --force-recreate netdisk
 - **`GLIBC_2.34 not found / GLIBCXX_3.4.30 not found`**：说明二进制是在高版本 glibc
   环境编译、跑到旧系统。本项目 Dockerfile 用 `gcc:14-bookworm` 构建 + `bookworm-slim`
   运行，两者一致，不存在该问题；裸机请用 Debian 12 / Ubuntu 22.04+ 编译运行。
-- **容器一直 Restarting**：先看日志 `docker logs auroradrive`。最常见原因是
+- **容器一直 Restarting**：先看日志 `docker logs fuji-netdisk`。最常见原因是
   还没执行 `--add-user`（启动日志会提示），或 `/data`、`/etc/reactor-http` 无写权限。
 - **HTTPS 证书不自动签发**：确认域名 A 记录已生效、服务器 80/443 从公网可达、
   没有在 Caddy 前面再套一层占用 80 端口的服务。

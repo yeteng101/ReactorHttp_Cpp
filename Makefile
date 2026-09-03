@@ -24,6 +24,7 @@ TEST_SOURCES := tests/http_request_test.cpp \
 	$(SRC_DIR)/DriveServer.cpp \
 	$(SRC_DIR)/SessionStore.cpp \
 	$(SRC_DIR)/Sha256.cpp \
+	$(SRC_DIR)/SidecarClient.cpp \
 	$(SRC_DIR)/ThreadPool.cpp \
 	$(SRC_DIR)/UserStore.cpp \
 	$(SRC_DIR)/WorkerThread.cpp
@@ -42,6 +43,7 @@ DRIVE_TEST_SOURCES := tests/drive_test.cpp \
 	$(SRC_DIR)/ServerMetrics.cpp \
 	$(SRC_DIR)/SessionStore.cpp \
 	$(SRC_DIR)/Sha256.cpp \
+	$(SRC_DIR)/SidecarClient.cpp \
 	$(SRC_DIR)/UserStore.cpp
 
 ifneq ($(shell uname -s),Linux)

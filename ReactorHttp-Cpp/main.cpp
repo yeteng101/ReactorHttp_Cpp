@@ -150,6 +150,7 @@ int main(int argc, char* argv[])
     }
     config.driveRoot = context.driveRoot;
     config.usersFile = context.usersFile;
+    context.sidecarUrl = config.sidecarUrl;
 
     // 切换工作目录到静态根目录，后续路径解析都以它为准
     if (!fs::is_directory(config.webRoot, error))

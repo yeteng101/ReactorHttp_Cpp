@@ -104,6 +104,10 @@ bool UserStore::verify(const std::string& username, const std::string& password)
     {
         return false;
     }
+    if (item->second.hash.compare(0, 6, "oauth:") == 0)
+    {
+        return false;   // OAuth 账号没有口令，只能通过第三方身份登录
+    }
     return hashPassword(password, item->second.salt) == item->second.hash;
 }
 
@@ -137,6 +141,59 @@ bool UserStore::create(const std::string& username, const std::string& password,
         }
     }
     return save(m_path, error);
+}
+
+bool UserStore::ensureOAuthUser(const std::string& username, const std::string& origin,
+    std::string& error)
+{
+    const bool unsafeUsername =
+        username.empty() || username == "." || username == ".." ||
+        username.find(':') != std::string::npos ||
+        username.find('/') != std::string::npos ||
+        username.find('\\') != std::string::npos ||
+        username.find('\n') != std::string::npos ||
+        username.find('\r') != std::string::npos ||
+        username.find('\t') != std::string::npos;
+    if (unsafeUsername)
+    {
+        error = "oauth provider returned an unsafe username";
+        return false;
+    }
+    if (origin.empty() || origin.find('\n') != std::string::npos)
+    {
+        error = "oauth provider returned an empty origin";
+        return false;
+    }
+
+    const bool isNewUser = [&] {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto existing = m_users.find(username);
+        if (existing != m_users.end())
+        {
+            if (existing->second.hash.compare(0, 6, "oauth:") != 0)
+            {
+                error = "oauth identity conflicts with an existing local account";
+                return false;
+            }
+            return false;   // 已经是 OAuth 账号，允许再次登录
+        }
+        const std::string salt = randomSalt();
+        m_users[username] = Record{salt, "oauth:" + origin};
+        return true;
+    }();
+    if (!error.empty())
+    {
+        return false;
+    }
+    if (m_path.empty())
+    {
+        return true;
+    }
+    if (isNewUser)
+    {
+        return save(m_path, error);
+    }
+    return true;
 }
 
 std::size_t UserStore::count() const

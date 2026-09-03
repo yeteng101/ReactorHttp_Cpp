@@ -1,5 +1,5 @@
 [Unit]
-Description=AuroraDrive (ReactorHttp-Cpp) netdisk server
+Description=FujiNetdisk (藤のnetdisk, ReactorHttp-Cpp) netdisk server
 After=network.target
 
 [Service]

@@ -1,11 +1,16 @@
-# AuroraDrive · ReactorHttp-Cpp 高性能网盘
+# 藤のnetdisk · ReactorHttp-Cpp 高性能网盘
 
 基于 C++17 Reactor 模型的**生产级私有网盘**：事件驱动 + 动态线程池 + sendfile
-零拷贝下载 + 分片断点续传 + Range 在线播放 + 账号登录 + 用户目录隔离。
+零拷贝下载 + 分片断点续传 + Range 在线播放 + 账号登录 + 用户目录隔离，
+并带 Notion 式文档编辑、AI 写作助手与 GitHub/Apple 登录。
 
 ## 功能
 
-- **Author 登录**：`users.conf` 保存加盐 SHA-256 口令散列；Cookie/Token 会话
+- **登录**：本地账号（加盐 SHA-256）+ **GitHub/Apple OAuth**（sidecar 桥接），
+  Cookie/Token 会话，第三方登录自动建号
+- **文档编辑**：文本/Markdown 文件点击即编辑，`⌘/Ctrl+S` 保存，Markdown 预览
+- **AI 助手**：`⌘/Ctrl+J` 召唤，OpenAI 兼容 API（OpenAI/DeepSeek/通义…），
+  可整篇重写或把结果写回文档
 - **文件管理**：目录列表、新建文件夹、重命名、移动、删除（含目录递归删除）
 - **上传**：8MB 分片 + `Upload-Offset` 断点续传，中断后可续传；同名文件覆盖更新
 - **下载**：sendfile 流式下载（Linux 零拷贝），大文件不占内存
@@ -30,6 +35,13 @@ make release
 
 打开 <http://127.0.0.1:10000>。
 
+需要 AI / 第三方登录时，另开终端启动 sidecar（默认监听 127.0.0.1:18666，
+首次使用在网页「AI 设置」里配置 Key）：
+
+```bash
+python3 sidecar/bridge.py --config sidecar-config.json
+```
+
 ## 目录结构
 
 ```text
@@ -40,6 +52,7 @@ ReactorHttp-Cpp/       C++ 服务端（核心源码）
 public/                前端 SPA（index.html/style.css/app.js）
 tests/                 协议 + 网盘回归测试
 deploy/                Docker Compose / Caddy / systemd / 部署文档
+sidecar/               AI 网关 + GitHub/Apple OAuth 桥接（Python）
 ```
 
 ## 测试

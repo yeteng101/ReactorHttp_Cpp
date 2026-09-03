@@ -1,0 +1,3 @@
+# Apple「通过 Apple 登录」的授权码换 token 需要 ES256 签名。
+# 只用 GitHub 或 AI 时可以不安 cryptography。
+cryptography>=42.0

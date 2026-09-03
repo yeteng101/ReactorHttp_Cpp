@@ -15,6 +15,10 @@ public:
     bool save(const std::string& path, std::string& error) const;
     bool verify(const std::string& username, const std::string& password) const;
     bool create(const std::string& username, const std::string& password, std::string& error);
+    // OAuth 登录：user 不存在则自动建号（hash 记为 oauth:<origin>，不能用密码登录）；
+    // 已存在同名普通账号则返回错误，防止第三方身份静默接管本地账号。
+    bool ensureOAuthUser(const std::string& username, const std::string& origin,
+        std::string& error);
     std::size_t count() const;
 
 private:

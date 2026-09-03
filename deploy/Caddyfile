@@ -1,4 +1,4 @@
-# AuroraDrive 生产部署：Caddy 自动申请并续期 HTTPS 证书，反代到 netdisk 容器。
+# 藤のnetdisk 生产部署：Caddy 自动申请并续期 HTTPS 证书，反代到 netdisk 容器。
 #
 # 使用方式（把域名的 A 记录解析到服务器公网 IP 之后）：
 #   docker compose up -d
