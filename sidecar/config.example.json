@@ -1,6 +1,6 @@
 {
   "listen": "127.0.0.1:18666",
-  "publicBaseUrl": "http://127.0.0.1:10000",
+  "publicBaseUrl": "http://127.0.0.1:18080",
   "ai": {
     "baseUrl": "https://api.openai.com/v1",
     "apiKey": "",

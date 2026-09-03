@@ -5,12 +5,12 @@
 /*
  * 服务器运行配置。支持两种命令行形式：
  *
- *   reactor-http --port 10000 --root /srv/www --min-workers 2 --max-workers 8
- *   reactor-http 10000 /srv/www 2 8          （旧版兼容）
+ *   reactor-http --port 18080 --root /srv/www --min-workers 2 --max-workers 8
+ *   reactor-http 18080 /srv/www 2 8          （旧版兼容）
  */
 struct ServerConfig
 {
-    unsigned short port = 10000;
+    unsigned short port = 18080;
     std::string webRoot = ".";
     int minWorkers = 2;
     int maxWorkers = 8;

@@ -13,7 +13,7 @@ services:
       - netdisk-data:/data                # 用户文件（按用户名分子目录）
       - netdisk-users:/etc/reactor-http   # 账号口令文件 users.conf
     command: >
-      /app/reactor-http --port 10000 --root /srv/www
+      /app/reactor-http --port 18080 --root /srv/www
       --min-workers 2 --max-workers 8
       --drive-root /data
       --users-file /etc/reactor-http/users.conf
@@ -23,7 +23,7 @@ services:
       - sidecar
     # 需要直连（不带 Caddy/域名）时取消下面注释：
     # ports:
-    #   - "10000:10000"
+    #   - "18080:18080"
 
   sidecar:
     # AI 网关 + GitHub/Apple OAuth 桥接：浏览器不直连，由 netdisk 本机转发

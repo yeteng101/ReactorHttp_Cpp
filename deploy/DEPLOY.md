@@ -52,7 +52,7 @@ make test           # HTTP + 网盘接口回归测试
 - 系统推荐 Ubuntu 22.04/24.04 或 Debian 12，2 核 4GB 起步（网盘按并发和文件量加配）。
 - 登录阿里云控制台 → ECS → 实例 → 安全组 → 配置规则：
   - 放行 **80（HTTP）** 和 **443（HTTPS）**；
-  - 容器内部用的 10000 端口**不需要**对公网放行；
+  - 容器内部用的 18080 端口**不需要**对公网放行；
   - 22 端口建议只允许你自己的 IP。
 - 如果还没有域名：在阿里云/其他注册商买一个域名，DNS 控制台添加 **A 记录**指向服务器公网 IP。
 
@@ -74,9 +74,9 @@ cd ReactorHttp_Cpp
 git checkout feature/cloud-drive        # 网盘功能所在分支
 cd deploy
 
-# 配置域名（改成你自己的，并把 A 记录解析到本机公网 IP）
+# 配置域名（示例已填 yeteng.xin，请确认 A 记录已解析到服务器公网 IP）
 cp .env.example .env
-sed -i '' 's/^DOMAIN=.*/DOMAIN=pan.example.com/' .env    # Linux 上 sed -i 不带 ''
+sed -i '' 's/^DOMAIN=.*/DOMAIN=yeteng.xin/' .env    # Linux 上 sed -i 不带 ''
 
 # 第一次创建作者账号（数据卷会自动建好）
 docker compose run --rm netdisk \
@@ -91,7 +91,7 @@ docker compose ps
 docker compose logs -f netdisk
 ```
 
-几分钟后访问 `https://你的域名`，用刚才的 author 账号登录。
+几分钟后访问 `https://yeteng.xin`，用刚才的 author 账号登录。
 
 ### 2.4 不想要域名？先 IP 直连测试
 
@@ -102,25 +102,25 @@ docker compose run --rm netdisk \
 
 # 编辑 deploy/docker-compose.yml，把 netdisk 服务里的
 #   # ports:
-#   #   - "10000:10000"
+#   #   - "18080:18080"
 # 两行取消注释，然后只启动网盘服务：
 docker compose up -d --build netdisk
 docker compose ps
 ```
 
-然后在阿里云安全组放行 **10000** 端口，浏览器访问 `http://公网IP:10000`。
+然后在阿里云安全组放行 **18080** 端口，浏览器访问 `http://公网IP:18080`。
 （仅调试：HTTP 明文 + 无 HTTPS 时密码会明文传输，正式使用请用域名 + Caddy。）
 
 ### 2.5 域名和 IP 的关系（必读）
 
 - **IP 是服务器的门牌号**，别人要访问你的网站，最后总得连到一个 IP。
-- **域名是给人记的名字**，DNS 系统负责把 `pan.example.com` 翻译成 IP。
+- **域名是给人记的名字**，DNS 系统负责把 `yeteng.xin` 翻译成 IP。
   A 记录写的就是「这个名字 → 哪个 IP」。
 - `172.16.0.0 ~ 172.31.255.255`（还有 `10.x`、`192.168.x`）是**私网地址**，
   只能在内网（你家里 / 云厂商 VPC 内部）用，公网用户连不进去。
   公网 IP 形如 `121.196.x.x`，才是阿里云给 ECS 的那一个。
-- 有了域名后不要访问 `http://IP:10000`，而是配好 Caddy 后访问
-  `https://你的域名`：域名负责好记 + 证书校验，Caddy 负责 HTTPS，IP 只躲在后面。
+- 有了域名后不要访问 `http://IP:18080`，而是配好 Caddy 后访问
+  `https://yeteng.xin`：域名负责好记 + 证书校验，Caddy 负责 HTTPS，IP 只躲在后面。
 
 ### 2.6 文档编辑器 + AI 助手
 
@@ -153,15 +153,15 @@ docker compose logs -f sidecar   # 出现 listening 即成功
 GitHub 注册（免费）：
 
 1. GitHub → Settings → Developer settings → OAuth Apps → New OAuth App；
-2. Homepage URL 填 `https://你的域名`；
-3. Authorization callback URL 填 `https://你的域名/api/oauth/github/callback`；
+2. Homepage URL 填 `https://yeteng.xin`；
+3. Authorization callback URL 填 `https://yeteng.xin/api/oauth/github/callback`；
 4. 把 Client ID / Client Secret 填进 `.env` 的 `OAUTH_GITHUB_*`。
 
 Apple（需要 Apple Developer 会员）：
 
 1. developer.apple.com → Certificates/Identifiers → Services 里建 Service ID，
    勾选 Sign in with Apple；
-2. 配置域名与回调 `https://你的域名/api/oauth/apple/callback`；
+2. 配置域名与回调 `https://yeteng.xin/api/oauth/apple/callback`；
 3. 创建 Sign in with Apple Key（.p8），把 Team ID / Key ID / Service ID 和私钥
    路径填进 `.env`，并把 p8 挂载进 sidecar 容器（docker-compose 里有注释示例）。
 
@@ -234,8 +234,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now reactor-http
 ```
 
-如果希望 Caddy 反代：参考 `deploy/Caddyfile`，把 `reverse_proxy` 目标从 `netdisk:10000`
-改成 `127.0.0.1:10000`，并注释掉容器相关的 `{$DOMAIN}` 站点块。
+如果希望 Caddy 反代：参考 `deploy/Caddyfile`，把 `reverse_proxy` 目标从 `netdisk:18080`
+改成 `127.0.0.1:18080`，并注释掉容器相关的 `{$DOMAIN}` 站点块。
 
 ---
 
@@ -301,14 +301,14 @@ docker compose up -d --no-build --force-recreate
 brew install wrk                      # macOS
 sudo apt-get install -y wrk           # Linux
 
-wrk -t4 -c64 -d30s --latency https://pan.example.com/api/drive/stream?path=某文件
+wrk -t4 -c64 -d30s --latency https://yeteng.xin/api/drive/stream?path=某文件
 ```
 
 阿里云 ECS 带宽（如 5Mbps 公网）通常是吞吐瓶颈；内网压测可以用 `-H "Host: ..."` 直连
-服务器内网 IP:10000 以测出真实服务能力。参考参数：
+服务器内网 IP:18080 以测出真实服务能力。参考参数：
 
-- 登录接口：`wrk -t4 -c100 -d30s --latency http://127.0.0.1:10000/api/me`
-- 静态页：`wrk -t8 -c300 -d60s --latency http://127.0.0.1:10000/index.html`
+- 登录接口：`wrk -t4 -c100 -d30s --latency http://127.0.0.1:18080/api/me`
+- 静态页：`wrk -t8 -c300 -d60s --latency http://127.0.0.1:18080/index.html`
 
 调整 worker：
 
@@ -332,4 +332,4 @@ docker compose up -d --force-recreate netdisk
 - **上传几十 GB 大文件**：前端按 8MB 分片 + 断点续传，中断后重新选择同一文件会自动续传；
   单次请求体上限 64MB（服务端保护），分片不受此限制。
 - **跨端口/跨域访问打不开**：正式使用请通过同一域名（Caddy 反代），登录 Cookie 是
-  SameSite=Lax 且可带 Secure；用 IP:10000 直连测试时也请用同一 IP:端口访问页面。
+  SameSite=Lax 且可带 Secure；用 IP:18080 直连测试时也请用同一 IP:端口访问页面。

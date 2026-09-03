@@ -28,7 +28,7 @@ void printUsage(const char* program)
         "Usage: %s [options]\n"
         "  or:  %s <port> <web-root> [min-workers] [max-workers]\n"
         "\nOptions:\n"
-        "  --port <n>                     listen port (1-65535, default 10000)\n"
+        "  --port <n>                     listen port (1-65535, default 18080)\n"
         "  --root <dir>                   static web root (default .)\n"
         "  --min-workers <n>              min worker threads (default 2)\n"
         "  --max-workers <n>              max worker threads (default 8)\n"

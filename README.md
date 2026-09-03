@@ -28,12 +28,12 @@ make release
   --add-user author:你的密码
 
 # 启动
-./build/reactor-http --port 10000 --root ./public \
+./build/reactor-http --port 18080 --root ./public \
   --min-workers 2 --max-workers 8 \
   --drive-root ./data --users-file ./users.conf
 ```
 
-打开 <http://127.0.0.1:10000>。
+打开 <http://127.0.0.1:18080>。
 
 需要 AI / 第三方登录时，另开终端启动 sidecar（默认监听 127.0.0.1:18666，
 首次使用在网页「AI 设置」里配置 Key）：

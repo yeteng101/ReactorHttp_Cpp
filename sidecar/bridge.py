@@ -34,7 +34,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "listen": "127.0.0.1:18666",
-    "publicBaseUrl": "http://127.0.0.1:10000",
+    "publicBaseUrl": "http://127.0.0.1:18080",
     "ai": {
         "baseUrl": "https://api.openai.com/v1",
         "apiKey": "",
@@ -207,7 +207,7 @@ def consume_state(state, provider):
 
 
 def redirect_uri(provider):
-    base = str(CONFIG.get("publicBaseUrl") or "http://127.0.0.1:10000").rstrip("/")
+    base = str(CONFIG.get("publicBaseUrl") or "http://127.0.0.1:18080").rstrip("/")
     return base + "/api/oauth/" + provider + "/callback"
 
 

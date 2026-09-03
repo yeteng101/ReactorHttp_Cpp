@@ -9,7 +9,7 @@
 	encode gzip zstd
 
 	# 转发到后端 ReactorHttp-Cpp 网盘服务
-	reverse_proxy netdisk:10000 {
+	reverse_proxy netdisk:18080 {
 		# 后端监听容器内地址
 	}
 
@@ -26,7 +26,7 @@
 	@streaming {
 		path /api/drive/stream/*
 	}
-	reverse_proxy @streaming netdisk:10000 {
+	reverse_proxy @streaming netdisk:18080 {
 		flush_interval -1
 	}
 
@@ -41,5 +41,5 @@
 #
 # :80 {
 #     encode gzip zstd
-#     reverse_proxy netdisk:10000
+#     reverse_proxy netdisk:18080
 # }

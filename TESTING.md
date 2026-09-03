@@ -139,9 +139,9 @@ docker run --rm \
   fuji-netdisk:3.0 --add-user author:test123456 \
   --users-file /etc/reactor-http/users.conf --drive-root /data
 
-# 正式运行（容器内 10000 映射到本机 18080）
+# 正式运行（容器内 18080 映射到本机 18080）
 docker run -d --name fuji-netdisk --restart unless-stopped \
-  -p 18080:10000 \
+  -p 18080:18080 \
   -v fuji-netdisk-data:/data -v fuji-netdisk-users:/etc/reactor-http \
   fuji-netdisk:3.0
 ```
