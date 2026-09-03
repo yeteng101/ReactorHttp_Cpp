@@ -142,10 +142,10 @@ int main()
             "OPTIONS /health HTTP/1.1\r\nHost: localhost\r\n\r\n");
         if (optionsResponse.rfind("HTTP/1.1 204 ", 0) != 0 ||
             headerValue(optionsResponse, "Content-Length") != "0" ||
-            headerValue(optionsResponse, "Allow") != "GET, HEAD, OPTIONS, PATCH, DELETE" ||
+            headerValue(optionsResponse, "Allow") != "GET, HEAD, POST, OPTIONS, PATCH, DELETE" ||
             headerValue(optionsResponse, "Access-Control-Allow-Origin") != "*" ||
             headerValue(optionsResponse, "Access-Control-Allow-Methods") !=
-                "GET, HEAD, OPTIONS, PATCH, DELETE")
+                "GET, HEAD, POST, OPTIONS, PATCH, DELETE")
         {
             std::cerr << "OPTIONS preflight response is invalid:\n"
                       << optionsResponse << '\n';
