@@ -3,10 +3,194 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reactor HTTP Server</title>
+  <meta name="color-scheme" content="dark">
+  <title>AuroraDrive · 极光云盘</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <h1>Reactor HTTP Server</h1>
-  <p>The C++ server is running.</p>
+  <div class="aurora" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+  </div>
+
+  <!-- 登录视图 -->
+  <main id="view-login" class="login-wrap">
+    <section class="login-card glass">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.5 19a4.5 4.5 0 0 1-.4-8.99 6 6 0 0 1 11.6-1.6A4.7 4.7 0 0 1 17.5 19z"/>
+            <path d="M12 10v6"/>
+            <path d="m9.5 13.5 2.5-2.5 2.5 2.5"/>
+          </svg>
+        </div>
+        <h1>AuroraDrive</h1>
+        <p>极光云盘 · 高速安全私有网盘</p>
+      </div>
+
+      <form id="login-form" autocomplete="on">
+        <label class="field">
+          <span>账号</span>
+          <input id="login-username" name="username" type="text" required autocomplete="username"
+                 placeholder="请输入账号" spellcheck="false">
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input id="login-password" name="password" type="password" required autocomplete="current-password"
+                 placeholder="请输入密码">
+        </label>
+        <button id="login-btn" class="btn btn-primary btn-block" type="submit">
+          <span class="btn-label">登 录</span>
+          <span class="spinner hidden" aria-hidden="true"></span>
+        </button>
+        <p id="login-error" class="form-error hidden"></p>
+      </form>
+
+      <p class="login-hint">首次使用？请在服务器上执行
+        <code>reactor-http --add-user 用户名:密码</code> 创建账号</p>
+    </section>
+  </main>
+
+  <!-- 网盘视图 -->
+  <main id="view-app" class="app hidden">
+    <header class="app-header">
+      <div class="brand brand-inline">
+        <div class="brand-mark small">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.5 19a4.5 4.5 0 0 1-.4-8.99 6 6 0 0 1 11.6-1.6A4.7 4.7 0 0 1 17.5 19z"/>
+          </svg>
+        </div>
+        <span class="brand-name">AuroraDrive</span>
+      </div>
+      <div class="user-chip">
+        <span class="avatar" id="user-avatar">A</span>
+        <span id="user-name">author</span>
+        <button class="icon-btn" id="logout-btn" title="退出登录" aria-label="退出登录">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <path d="m16 17 5-5-5-5"/>
+            <path d="M21 12H9"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="file-panel glass">
+      <div class="toolbar">
+        <nav class="crumbs" id="breadcrumbs" aria-label="目录导航"></nav>
+        <div class="toolbar-actions">
+          <button class="btn btn-ghost" id="mkdir-btn" title="新建文件夹">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <path d="M12 11v6M9 14h6"/>
+            </svg>
+            新建文件夹
+          </button>
+          <label class="btn btn-primary" id="upload-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 17V5"/>
+              <path d="m7 10 5-5 5 5"/>
+              <path d="M4 19h16"/>
+            </svg>
+            上传文件
+            <input id="file-input" type="file" multiple hidden>
+          </label>
+          <label class="btn btn-ghost">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            上传文件夹
+            <input id="folder-input" type="file" webkitdirectory multiple hidden>
+          </label>
+          <button class="btn btn-ghost" id="refresh-btn" title="刷新">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+              <path d="M21 3v6h-6"/>
+            </svg>
+          </button>
+          <div class="view-toggle" role="group" aria-label="视图切换">
+            <button class="icon-btn active" id="view-list" title="列表视图" aria-label="列表视图">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round">
+                <path d="M8 6h13M8 12h13M8 18h13"/>
+                <circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>
+              </svg>
+            </button>
+            <button class="icon-btn" id="view-grid" title="宫格视图" aria-label="宫格视图">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="drop-zone" class="drop-zone">
+        <div id="file-area" class="file-area view-list" aria-live="polite"></div>
+        <div id="empty-state" class="empty-state hidden">
+          <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor"
+               stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6.5 19a4.5 4.5 0 0 1-.4-8.99 6 6 0 0 1 11.6-1.6A4.7 4.7 0 0 1 17.5 19z"/>
+          </svg>
+          <p>这个文件夹还是空的</p>
+          <span>拖拽文件到此处，或点击「上传文件」</span>
+        </div>
+      </div>
+      <footer class="panel-foot" id="storage-info"></footer>
+    </section>
+  </main>
+
+  <!-- 上传队列 -->
+  <aside id="upload-panel" class="upload-panel glass hidden">
+    <header>
+      <span>上传队列</span>
+      <div>
+        <button class="icon-btn" id="upload-clear" title="清空已完成" aria-label="清空已完成">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round">
+            <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="upload-toggle" title="收起" aria-label="收起上传队列">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="upload-list" class="upload-list"></div>
+  </aside>
+
+  <!-- 预览模态 -->
+  <div id="preview-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <div class="modal-card glass">
+      <header>
+        <span class="modal-title" id="preview-title"></span>
+        <button class="icon-btn" data-close="1" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="modal-body" id="preview-body"></div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 </body>
 </html>
