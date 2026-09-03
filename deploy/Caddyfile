@@ -1,24 +1,45 @@
-# 生产部署：Caddy 在前面做 HTTPS 终结 + 反向代理
-# 把 your-domain.com 换成你自己的域名，并把 DNS 解析到服务器公网 IP。
-# 安装 Caddy 后运行：caddy run --config Caddyfile（或使用系统服务）
+# AuroraDrive 生产部署：Caddy 自动申请并续期 HTTPS 证书，反代到 netdisk 容器。
 #
-# 阿里云安全组只需要放行 80/443，不需要放行 10000。
+# 使用方式（把域名的 A 记录解析到服务器公网 IP 之后）：
+#   docker compose up -d
+# 或手动：caddy run --config Caddyfile
 
-your-domain.com {
-    # 把 HTTPS 请求转发到本机 Reactor 服务
-    reverse_proxy 127.0.0.1:10000
+{$DOMAIN:localhost} {
+	# 压缩静态与文本传输（上传不受影响）
+	encode gzip zstd
 
-    # 开启 gzip/br 压缩，减少静态资源传输量
-    encode gzip zstd
+	# 转发到后端 ReactorHttp-Cpp 网盘服务
+	reverse_proxy netdisk:10000 {
+		# 后端监听容器内地址
+	}
 
-    # 访问日志（默认输出到 stdout）
-    log {
-        output stdout
-        format console
-    }
+	# 安全与缓存响应头
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	# 上传大文件时禁止给视频/音频类响应额外加缓冲
+	@streaming {
+		path /api/drive/stream/*
+	}
+	reverse_proxy @streaming netdisk:10000 {
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format console
+	}
 }
 
-# 没有域名、只用 IP 时的明文模式（不推荐，只适合调试）：
+# 只有公网 IP、没有域名时的临时明文模式（仅调试）：
+# 把上面的 {$DOMAIN:localhost} { ... } 整段替换为：
+#
 # :80 {
-#     reverse_proxy 127.0.0.1:10000
+#     encode gzip zstd
+#     reverse_proxy netdisk:10000
 # }

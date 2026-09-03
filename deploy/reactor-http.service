@@ -1,15 +1,28 @@
 [Unit]
-Description=ReactorHttp-Cpp high performance HTTP server
+Description=AuroraDrive (ReactorHttp-Cpp) netdisk server
 After=network.target
 
 [Service]
 Type=simple
-# 以普通用户运行，不用 root
-User=www-data
-Group=www-data
-# 日志目录需要先创建并授权：mkdir -p /var/log/reactor-http && chown www-data:www-data /var/log/reactor-http
+# 生产建议使用专用系统用户；下面的目录与文件需提前创建并授权：
+#   sudo useradd --system --home /srv/netdisk --no-create-home netdisk
+#   sudo mkdir -p /srv/netdisk/data /srv/netdisk/conf /var/log/reactor-http
+#   sudo chown -R netdisk:netdisk /srv/netdisk /var/log/reactor-http
+#   sudo -u netdisk /opt/ReactorHttp-Cpp/build/reactor-http \
+#       --drive-root /srv/netdisk/data --users-file /srv/netdisk/conf/users.conf \
+#       --add-user author:your-password
+User=netdisk
+Group=netdisk
 WorkingDirectory=/opt/ReactorHttp-Cpp/public
-ExecStart=/opt/ReactorHttp-Cpp/build/reactor-http --port 10000 --root /opt/ReactorHttp-Cpp/public --min-workers 2 --max-workers 8 --access-log /var/log/reactor-http/access.log --error-log /var/log/reactor-http/error.log
+ExecStart=/opt/ReactorHttp-Cpp/build/reactor-http \
+  --port 10000 \
+  --root /opt/ReactorHttp-Cpp/public \
+  --min-workers 2 \
+  --max-workers 8 \
+  --drive-root /srv/netdisk/data \
+  --users-file /srv/netdisk/conf/users.conf \
+  --access-log /var/log/reactor-http/access.log \
+  --error-log /var/log/reactor-http/error.log
 Restart=on-failure
 RestartSec=3
 # 高并发时放开文件描述符上限

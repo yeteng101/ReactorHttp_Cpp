@@ -1,0 +1,45 @@
+services:
+  netdisk:
+    # 网盘服务：编译 C++ 项目并运行（Linux 容器，Windows/Mac 可用 Docker Desktop）
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: auroradrive:2.0
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - netdisk-data:/data                # 用户文件（按用户名分子目录）
+      - netdisk-users:/etc/reactor-http   # 账号口令文件 users.conf
+    command: >
+      /app/reactor-http --port 10000 --root /srv/www
+      --min-workers 2 --max-workers 8
+      --drive-root /data
+      --users-file /etc/reactor-http/users.conf
+      --max-connections 20000
+    # 需要直连（不带 Caddy/域名）时取消下面注释：
+    # ports:
+    #   - "10000:10000"
+
+  caddy:
+    # HTTPS 反代 + 自动证书（Let's Encrypt）。不需要域名时可移除本服务
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - netdisk
+
+volumes:
+  netdisk-data:
+  netdisk-users:
+  caddy-data:
+  caddy-config:
