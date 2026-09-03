@@ -1,0 +1,27 @@
+[Unit]
+Description=AuroraDrive netdisk (home Linux server)
+After=network.target
+
+[Service]
+Type=simple
+User=netdisk
+Group=netdisk
+# 与 linux-old-pc.md 的目录约定一致；实际路径不同时先修改本文件再启用
+WorkingDirectory=/srv/auroradrive/ReactorHttp_Cpp/public
+ExecStart=/srv/auroradrive/ReactorHttp_Cpp/build/reactor-http \
+  --port 10000 \
+  --root /srv/auroradrive/ReactorHttp_Cpp/public \
+  --min-workers 2 \
+  --max-workers 8 \
+  --drive-root /srv/auroradrive/data \
+  --users-file /srv/auroradrive/conf/users.conf \
+  --access-log /var/log/reactor-http/access.log \
+  --error-log /var/log/reactor-http/error.log
+Restart=on-failure
+RestartSec=3
+# 高并发时放开文件描述符上限
+LimitNOFILE=200000
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

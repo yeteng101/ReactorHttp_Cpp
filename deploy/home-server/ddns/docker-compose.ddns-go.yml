@@ -1,0 +1,16 @@
+# DDNS 自动更新工具（可选）：家庭宽带是动态公网 IP 时，让域名一直指向家里最新 IP
+# 部署在任意一台 7x24 开机的机器上即可（NAS、旧电脑、ECS 都行）
+#
+#   docker compose -f docker-compose.ddns-go.yml up -d
+#   浏览器打开 http://127.0.0.1:9876 配置
+
+services:
+  ddns-go:
+    image: jeessy/ddns-go
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9876:9876"     # 只允许本机访问配置页；公网机勿直接暴露
+    volumes:
+      - ./ddns-go-config:/root
+    environment:
+      TZ: Asia/Shanghai

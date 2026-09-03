@@ -1,0 +1,21 @@
+# frps 服务端配置
+# 运行位置：阿里云 ECS 或任何有固定公网 IP 的机器（只做“门卫”，不存网盘数据）
+# 用法：docker compose -f docker-compose.relay.yml up -d
+
+bindAddr = "0.0.0.0"
+bindPort = 7000
+
+# frpc 登录密钥，两端必须完全一致（自己生成一个长随机串）
+# 生成示例：openssl rand -hex 16
+auth.method = "token"
+auth.token = "CHANGE_ME_32_byte_random_token_000000"
+
+# frp 内置的 HTTP vhost 端口：只允许容器内网访问（不映射到公网），
+# 公网 HTTPS 由同栈 Caddy 转发到 frps:8080
+vhostHTTPPort = 8080
+
+# 面板（可选）：给 frps 开一个只读状态页，按需打开并改成强密码
+# webServer.addr = "0.0.0.0"
+# webServer.port = 7500
+# webServer.user = "admin"
+# webServer.password = "CHANGE_ME_panel_password"

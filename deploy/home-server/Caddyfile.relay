@@ -1,0 +1,21 @@
+# 中继机 Caddy：只做 HTTPS 与转发，证书自动申请/续期
+# 站点地址由 docker-compose.relay.yml 的 DOMAIN 环境变量注入
+
+{$DOMAIN:pan.example.com} {
+	encode gzip zstd
+
+	# 转到 frp 内置 HTTP vhost（frps 按 Host 头路由到旧电脑的 frpc）
+	reverse_proxy frps:8080
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

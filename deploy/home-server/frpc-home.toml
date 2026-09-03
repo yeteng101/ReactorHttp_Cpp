@@ -1,0 +1,26 @@
+# frpc 客户端配置
+# 运行位置：旧电脑（与网盘容器共享网络栈）
+
+serverAddr = "121.196.236.68"          # 改成你的 ECS 公网 IP 或 frp 域名
+serverPort = 7000
+auth.token = "CHANGE_ME_32_byte_random_token_000000"   # 与 frps.toml 一致
+
+transport.tls.enable = true            # 与 frps 之间走 TLS 加密
+loginFailExit = false                  # 家里断网时 frpc 自动重连而不是退出
+
+# 域名模式（推荐）：公网域名 -> ECS Caddy -> frps -> frpc -> 本机网盘
+[[proxies]]
+name = "auroradrive-web"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 10000
+customDomains = ["pan.example.com"]    # 改成你自己的域名
+
+# 无域名临时调试模式（二选一）：直接访问 http://ECS公网IP:10000
+# 需要把 ECS 安全组放行 TCP 10000，并把上面域名段注释掉
+# [[proxies]]
+# name = "auroradrive-tcp"
+# type = "tcp"
+# localIP = "127.0.0.1"
+# localPort = 10000
+# remotePort = 10000

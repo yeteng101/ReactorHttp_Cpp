@@ -1,0 +1,45 @@
+# 旧电脑（家）网盘栈：netdisk 存数据 + frpc 主动连到公网中继
+#
+# Windows 旧电脑准备：
+#   1. 安装 Docker Desktop（WSL2 后端）
+#   2. 创建两个目录，例如 D:\AuroraDrive\data 和 D:\AuroraDrive\conf
+#   3. 复制 .env.home.example 为 .env，按需修改目录
+#   4. 修改 frpc-home.toml（ECS IP / token / 域名）
+#   5. 创建账号后启动：
+#        docker compose -f docker-compose.home.yml build netdisk
+#        docker compose -f docker-compose.home.yml run --rm netdisk \
+#          /app/reactor-http --add-user author:你的密码 \
+#          --users-file /etc/reactor-http/users.conf --drive-root /data
+#        docker compose -f docker-compose.home.yml up -d
+
+services:
+  netdisk:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: auroradrive-home:2.0
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+    # 只绑本机回环：旧电脑本机浏览器可访问，外部流量一律走 frpc 隧道
+    ports:
+      - "127.0.0.1:10000:10000"
+    volumes:
+      - ${NETDISK_DATA_DIR:-./home-data}:/data                # 网盘文件真实落盘处
+      - ${NETDISK_USERS_DIR:-./home-users}:/etc/reactor-http  # users.conf
+    command: >
+      /app/reactor-http --port 10000 --root /srv/www
+      --min-workers 2 --max-workers 8
+      --drive-root /data
+      --users-file /etc/reactor-http/users.conf
+
+  frpc:
+    # 与 netdisk 共享网络栈：frpc 里访问 127.0.0.1:10000 就是网盘容器
+    image: snowdreamtech/frpc:0.61.1
+    restart: unless-stopped
+    network_mode: "service:netdisk"
+    depends_on:
+      - netdisk
+    volumes:
+      - ./frpc-home.toml:/etc/frp/frpc.toml:ro

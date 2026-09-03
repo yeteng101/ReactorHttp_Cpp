@@ -1,0 +1,38 @@
+# 公网中继栈（跑在阿里云 ECS / 有固定公网 IP 的机器）
+# 角色：只转发流量，不存网盘文件。
+#
+#   docker compose -f docker-compose.relay.yml up -d --build
+#
+# 阿里云安全组需放行：80、443（公网访问）；7000（只让旧电脑连入，
+# 建议来源填你家宽当前公网 IP；家里没有公网 IP 时填 0.0.0.0/0 + frp token 保护）
+
+services:
+  frps:
+    # 与旧电脑上 frpc 的版本必须一致（这里统一用 0.61.1）
+    image: snowdreamtech/frps:0.61.1
+    restart: unless-stopped
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+    ports:
+      - "7000:7000"          # frpc 控制连接（旧电脑主动连出）
+      # - "7500:7500"        # 可选：frp 面板，需先在 frps.toml 打开并设强密码
+
+  caddy:
+    # 域名 HTTPS 终结：公网用户 -> Caddy(443) -> frps(8080) -> frpc -> 旧电脑
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-pan.example.com}
+    depends_on:
+      - frps
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.relay:/etc/caddy/Caddyfile:ro
+      - relay-caddy-data:/data
+      - relay-caddy-config:/config
+
+volumes:
+  relay-caddy-data:
+  relay-caddy-config:

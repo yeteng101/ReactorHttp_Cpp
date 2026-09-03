@@ -54,6 +54,10 @@ make test
 [deploy/DEPLOY.md](deploy/DEPLOY.md)，一键编排文件在
 [deploy/docker-compose.yml](deploy/docker-compose.yml)。
 
+想在**家里旧电脑**自建服务器、不依赖阿里云存文件？见
+[deploy/home-server/README.md](deploy/home-server/README.md)
+（frp 内网穿透 + DDNS 对照方案，文件存在家里磁盘）。
+
 ## 技术特性
 
 - Linux `epoll` / macOS `select` 自适应；`sendfile`（Linux）与 `pread+send`（macOS）流式文件

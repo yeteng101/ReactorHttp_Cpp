@@ -6,3 +6,9 @@ build/
 data/
 users.conf
 cookies.txt
+
+# 家用服务器部署目录的本地运行时文件（账号/数据/密钥不要入库）
+deploy/home-server/.env
+deploy/home-server/home-data/
+deploy/home-server/home-users/
+deploy/home-server/ddns/ddns-go-config/
