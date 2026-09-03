@@ -32,6 +32,4 @@ VOLUME ["/data", "/etc/reactor-http"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/18080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
 
-CMD ["/app/reactor-http", "--port", "18080", "--root", "/srv/www",
-     "--min-workers", "2", "--max-workers", "8",
-     "--drive-root", "/data", "--users-file", "/etc/reactor-http/users.conf"]
+CMD ["/app/reactor-http", "--port", "18080", "--root", "/srv/www", "--min-workers", "2", "--max-workers", "8", "--drive-root", "/data", "--users-file", "/etc/reactor-http/users.conf"]
