@@ -1,0 +1,20 @@
+[Unit]
+Description=ReactorHttp-Cpp high performance HTTP server
+After=network.target
+
+[Service]
+Type=simple
+# 以普通用户运行，不用 root
+User=www-data
+Group=www-data
+# 日志目录需要先创建并授权：mkdir -p /var/log/reactor-http && chown www-data:www-data /var/log/reactor-http
+WorkingDirectory=/opt/ReactorHttp-Cpp/public
+ExecStart=/opt/ReactorHttp-Cpp/build/reactor-http --port 10000 --root /opt/ReactorHttp-Cpp/public --min-workers 2 --max-workers 8 --access-log /var/log/reactor-http/access.log --error-log /var/log/reactor-http/error.log
+Restart=on-failure
+RestartSec=3
+# 高并发时放开文件描述符上限
+LimitNOFILE=200000
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+# 生产部署：Caddy 在前面做 HTTPS 终结 + 反向代理
+# 把 your-domain.com 换成你自己的域名，并把 DNS 解析到服务器公网 IP。
+# 安装 Caddy 后运行：caddy run --config Caddyfile（或使用系统服务）
+#
+# 阿里云安全组只需要放行 80/443，不需要放行 10000。
+
+your-domain.com {
+    # 把 HTTPS 请求转发到本机 Reactor 服务
+    reverse_proxy 127.0.0.1:10000
+
+    # 开启 gzip/br 压缩，减少静态资源传输量
+    encode gzip zstd
+
+    # 访问日志（默认输出到 stdout）
+    log {
+        output stdout
+        format console
+    }
+}
+
+# 没有域名、只用 IP 时的明文模式（不推荐，只适合调试）：
+# :80 {
+#     reverse_proxy 127.0.0.1:10000
+# }
