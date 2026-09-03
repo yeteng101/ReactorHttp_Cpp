@@ -9,11 +9,12 @@
 #include <vector>
 
 class TcpConnection;
+struct ServerContext;
 
 class TcpServer
 {
 public:
-    explicit TcpServer(const ServerConfig& config);
+    explicit TcpServer(const ServerConfig& config, ServerContext* serverContext = nullptr);
     ~TcpServer();
     // 启动服务器（阻塞运行直到收到 SIGTERM/SIGINT 或优雅停机完成）
     void run();
@@ -44,4 +45,5 @@ private:
     bool m_finalized = false;
     std::mutex m_connMutex;
     std::unordered_set<TcpConnection*> m_connections;
+    ServerContext* m_serverContext = nullptr;
 };

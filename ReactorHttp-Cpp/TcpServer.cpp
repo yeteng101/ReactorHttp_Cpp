@@ -24,10 +24,11 @@ const char* RejectedResponse =
 
 int TcpServer::s_signalPipe[2] = {-1, -1};
 
-TcpServer::TcpServer(const ServerConfig& config)
+TcpServer::TcpServer(const ServerConfig& config, ServerContext* serverContext)
     : m_config(config),
       m_minThreads(config.minWorkers),
-      m_maxThreads(config.maxWorkers)
+      m_maxThreads(config.maxWorkers),
+      m_serverContext(serverContext)
 {
     m_mainLoop = new EventLoop;
     m_threadPool = new ThreadPool(m_mainLoop, m_minThreads, m_maxThreads);
@@ -149,7 +150,8 @@ int TcpServer::acceptConnection(void* arg)
 
         EventLoop* evLoop = server->m_threadPool->takeWorkerEventLoop();
         TcpConnection* connection = new TcpConnection(cfd, evLoop, server,
-            server->m_config.idleTimeoutSeconds, server->m_config.maxRequestsPerConnection);
+            server->m_config.idleTimeoutSeconds, server->m_config.maxRequestsPerConnection,
+            server->m_serverContext);
         server->registerConnection(connection);
     }
     return 0;

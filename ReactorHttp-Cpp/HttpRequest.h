@@ -5,6 +5,8 @@
 #include <map>
 using namespace std;
 
+struct ServerContext;
+
 // 当前的解析状态
 enum class PrecessState:char
 {
@@ -42,6 +44,27 @@ public:
     inline const string& getBody() const
     {
         return m_body;
+    }
+    inline const string& method() const
+    {
+        return m_method;
+    }
+    inline const string& url() const
+    {
+        return m_url;
+    }
+    inline const string& version() const
+    {
+        return m_version;
+    }
+    // 接入服务器级状态（网盘模式由连接层在首次解析前设置）
+    inline void setContext(ServerContext* context)
+    {
+        m_context = context;
+    }
+    inline ServerContext* context() const
+    {
+        return m_context;
     }
     const string getFileType(const string name);
     inline void setMethod(string method)
@@ -86,5 +109,6 @@ private:
     bool m_parseError;
     bool m_keepAlive;
     bool m_forceClose = false;
+    ServerContext* m_context = nullptr;
 };
 

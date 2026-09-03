@@ -1,4 +1,6 @@
 #include "HttpRequest.h"
+#include "DriveServer.h"
+#include "ServerContext.h"
 #include "ServerMetrics.h"
 
 #include <algorithm>
@@ -842,12 +844,13 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     const bool isOptions = strcasecmp(m_method.c_str(), "OPTIONS") == 0;
     const bool isPatch = strcasecmp(m_method.c_str(), "PATCH") == 0;
     const bool isDelete = strcasecmp(m_method.c_str(), "DELETE") == 0;
+    const bool isPost = strcasecmp(m_method.c_str(), "POST") == 0;
     if (!isOptions && !isPatch && !isDelete &&
-        strcasecmp(m_method.c_str(), "GET") != 0 && !isHead)
+        !isPost && strcasecmp(m_method.c_str(), "GET") != 0 && !isHead)
     {
         setResponse(response, StatusCode::MethodNotAllowed, "text/plain; charset=utf-8",
             "Method Not Allowed\n");
-        response->addHeader("Allow", "GET, HEAD, OPTIONS, PATCH, DELETE");
+        response->addHeader("Allow", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
         return false;
     }
     response->setHeadOnly(isHead);
@@ -856,9 +859,8 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     {
         // CORS 预检：不校验具体路径，也不返回正文
         response->setStatusCode(StatusCode::NoContent);
-        response->addHeader("Allow", "GET, HEAD, OPTIONS, PATCH, DELETE");
-        response->addHeader("Access-Control-Allow-Origin", "*");
-        response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, PATCH, DELETE");
+        response->addHeader("Allow", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
+        response->addHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS, PATCH, DELETE");
         const string requestedHeaders = getHeader("Access-Control-Request-Headers");
         response->addHeader("Access-Control-Allow-Headers",
             requestedHeaders.empty() ? "Content-Type, Range" : requestedHeaders);
@@ -877,15 +879,38 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
 
     if (requestPath == "/health")
     {
-        setResponse(response, StatusCode::OK, "application/json; charset=utf-8",
-            "{\"status\":\"ok\"}");
-        return true;
+        if (isHead || strcasecmp(m_method.c_str(), "GET") == 0)
+        {
+            setResponse(response, StatusCode::OK, "application/json; charset=utf-8",
+                "{\"status\":\"ok\"}");
+            return true;
+        }
+        setResponse(response, StatusCode::MethodNotAllowed, "text/plain; charset=utf-8",
+            "Method Not Allowed\n");
+        response->addHeader("Allow", "GET, HEAD");
+        return false;
+    }
+    // 网盘模式：/api/* 统一走 DriveServer（登录、鉴权、文件管理），
+    // 非网盘模式下保留原有 /api/files 公开接口（供无鉴权场景与回归测试使用）。
+    if (m_context != nullptr && m_context->driveEnabled &&
+        (requestPath == "/api/login" || requestPath == "/api/logout" ||
+         requestPath == "/api/me" || requestPath.compare(0, 11, "/api/drive/") == 0 ||
+         requestPath.compare(0, 10, "/api/files") == 0))
+    {
+        return Drive::handle(*m_context, requestPath, *this, *response);
     }
     if (requestPath == "/metrics")
     {
-        setResponse(response, StatusCode::OK, "application/json; charset=utf-8",
-            ServerMetrics::instance().toJson());
-        return true;
+        if (isHead || strcasecmp(m_method.c_str(), "GET") == 0)
+        {
+            setResponse(response, StatusCode::OK, "application/json; charset=utf-8",
+                ServerMetrics::instance().toJson());
+            return true;
+        }
+        setResponse(response, StatusCode::MethodNotAllowed, "text/plain; charset=utf-8",
+            "Method Not Allowed\n");
+        response->addHeader("Allow", "GET, HEAD");
+        return false;
     }
 
     std::error_code error;

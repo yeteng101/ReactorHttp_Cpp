@@ -38,6 +38,9 @@ void printUsage(const char* program)
         "  --graceful-shutdown <n>        max seconds to wait for connections to drain\n"
         "  --access-log <path|- >         access log file, - for stdout\n"
         "  --error-log <path|- >          error log file, - for stderr\n"
+        "  --drive-root <dir>             enable netdisk mode with this data dir\n"
+        "  --users-file <path>            user password file (default users.conf)\n"
+        "  --add-user <name:password>     create/update a user then exit\n"
         "  --help                         show this help\n",
         program, program);
 }
@@ -208,6 +211,35 @@ bool parseConfig(int argc, char* argv[], ServerConfig& config)
                 return false;
             }
             config.errorLogPath = value;
+        }
+        else if (arg == "--drive-root")
+        {
+            const char* value = needValue("--drive-root");
+            if (value == nullptr || *value == '\0')
+            {
+                fprintf(stderr, "Invalid --drive-root value.\n");
+                return false;
+            }
+            config.driveRoot = value;
+        }
+        else if (arg == "--users-file")
+        {
+            const char* value = needValue("--users-file");
+            if (value == nullptr || *value == '\0')
+            {
+                fprintf(stderr, "Invalid --users-file value.\n");
+                return false;
+            }
+            config.usersFile = value;
+        }
+        else if (arg == "--add-user")
+        {
+            const char* value = needValue("--add-user");
+            if (value == nullptr)
+            {
+                return false;
+            }
+            config.addUser = value;
         }
         else
         {

@@ -24,7 +24,7 @@ constexpr uint64_t MaxFileChunk = 1u << 20;    // 每次 sendfile 最多 1MB
 }
 
 TcpConnection::TcpConnection(int fd, EventLoop* evloop, TcpServer* server,
-    int idleTimeoutSeconds, int maxRequestsPerConnection)
+    int idleTimeoutSeconds, int maxRequestsPerConnection, ServerContext* serverContext)
     : m_name("Connection-" + to_string(fd)),
       m_evLoop(evloop),
       m_readBuf(new Buffer(10240)),
@@ -36,6 +36,9 @@ TcpConnection::TcpConnection(int fd, EventLoop* evloop, TcpServer* server,
       m_maxRequestsPerConnection(maxRequestsPerConnection),
       m_lastActivity(std::chrono::steady_clock::now())
 {
+    // 网盘模式等服务器级状态：每个连接的所有请求共享同一份上下文
+    m_request->setContext(serverContext);
+
     // 记录远端地址，供访问日志使用
     struct sockaddr_storage address;
     socklen_t addressLength = sizeof(address);

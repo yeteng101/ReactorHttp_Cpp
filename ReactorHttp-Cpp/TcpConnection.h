@@ -10,12 +10,13 @@
 #include <string>
 
 class TcpServer;
+struct ServerContext;
 
 class TcpConnection
 {
 public:
     TcpConnection(int fd, EventLoop* evloop, TcpServer* server, int idleTimeoutSeconds,
-        int maxRequestsPerConnection);
+        int maxRequestsPerConnection, ServerContext* serverContext);
     ~TcpConnection();
 
     static int processRead(void* arg);
