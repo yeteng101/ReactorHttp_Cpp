@@ -127,3 +127,46 @@ docker compose run --rm netdisk /app/reactor-http --add-user 用户名:新密码
 - **打不开/白屏**：请通过 `https://yeteng.xin` 访问，不要混用 IP:18080 与域名。
 
 详细备份/回滚、裸机 systemd 部署与压测见 `DEPLOY.md`。
+
+## 9. 开启 GitHub 登录（OAuth）
+
+登录页的 GitHub 按钮由 `/api/oauth/status` 决定：sidecar 同时拿到
+`clientId` 和 `clientSecret` 才显示。Docker 部署下**不需要**仓库根目录的
+`sidecar-config.json`，直接在 `deploy/.env` 填环境变量即可（compose 会以
+`SIDECAR_GITHUB_*` 注入 sidecar，优先级高于配置文件）。
+
+### 9.1 GitHub 上创建 OAuth App
+
+1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**；
+2. Application name 随意（如 `fuji-netdisk`）；
+3. Homepage URL 填 `https://yeteng.xin`；
+4. **Authorization callback URL 必须填：**
+   `https://yeteng.xin/api/oauth/github/callback`（GitHub 只允许 https
+   回调，需等域名证书签发后再注册）；
+5. 注册后复制 **Client ID**，并点 Generate a new client secret 复制 **Secret**。
+
+### 9.2 服务器填入凭据并重启 sidecar
+
+```bash
+cd /opt/ReactorHttp-Cpp/deploy
+cp .env.example .env        # 还没有 .env 时
+vim .env                    # 在文件末尾追加：
+#   OAUTH_GITHUB_CLIENT_ID=你的ClientID
+#   OAUTH_GITHUB_CLIENT_SECRET=你的ClientSecret
+
+docker compose up -d --force-recreate sidecar
+```
+
+### 9.3 验证
+
+```bash
+curl -s https://yeteng.xin/api/oauth/status
+# 期望输出：{"github":true,"apple":false}
+```
+
+刷新登录页（Cmd/Ctrl+Shift+R 强刷），出现「使用 GitHub 登录」按钮即可。
+首次登录会在浏览器跳转到 GitHub 授权，授权后自动创建账号并种 Cookie。
+
+> 若返回 `{"github":false,...}`：确认 `.env` 两个变量都已填且无多余空格；
+> 然后 `docker compose logs sidecar` 看报错。Secret 泄露时到 GitHub 页面
+> 重新生成即可，旧 Secret 立即失效。
