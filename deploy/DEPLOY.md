@@ -333,3 +333,14 @@ docker compose up -d --force-recreate netdisk
   单次请求体上限 64MB（服务端保护），分片不受此限制。
 - **跨端口/跨域访问打不开**：正式使用请通过同一域名（Caddy 反代），登录 Cookie 是
   SameSite=Lax 且可带 Secure；用 IP:18080 直连测试时也请用同一 IP:端口访问页面。
+- **`git clone/pull` 报 `RPC failed; curl 16 ... HTTP2 framing layer`**：国内服务器直连
+  GitHub 的 HTTPS 通道不稳定导致的传输中断。先执行
+  `git config --global http.version HTTP/1.1`（或临时用
+  `git -c http.version=HTTP/1.1 pull --rebase`），必要时再
+  `git config --global http.postBuffer 524288000`，然后重试；长期使用建议改用
+  SSH 方式 `git clone git@github.com:yeteng101/ReactorHttp_Cpp.git` 并在 GitHub 添加
+  服务器 SSH key。
+- **Docker 构建 netdisk 时报 `'strerror' was not declared in this scope`**：
+  `ReactorHttp-Cpp/TcpConnection.cpp` 漏包含 `<cstring>` 导致（gcc:14 下更严格）。
+  先 `git pull --rebase` 拉取修复提交；副本较旧时可直接在该文件 include 区补一行
+  `#include <cstring>` 后重新 `docker compose up -d --build`。
