@@ -105,7 +105,8 @@ int main()
     else
     {
         bool done = false;
-        for (int i = 0; i < 200 && !done; ++i)
+        // 连接超时上限是 10s（ConnectTimeoutMs），这里给 15s 预算
+        for (int i = 0; i < 600 && !done; ++i)
         {
             const std::shared_ptr<AiJob> job = service.findJob(jobId);
             if (!job)
@@ -113,21 +114,24 @@ int main()
                 fail("job disappeared");
                 break;
             }
-            std::lock_guard<std::mutex> lock(job->mutex);
-            done = job->done;
-            if (done)
             {
-                if (job->ok)
+                std::lock_guard<std::mutex> lock(job->mutex);
+                done = job->done;
+                if (done)
                 {
-                    fail("job unexpectedly succeeded against unreachable host");
-                }
-                if (job->error.empty())
-                {
-                    fail("job finished without error message");
+                    if (job->ok)
+                    {
+                        fail("job unexpectedly succeeded against unreachable host");
+                    }
+                    if (job->error.empty())
+                    {
+                        fail("job finished without error message");
+                    }
                 }
             }
-            else
+            if (!done)
             {
+                // 不要持锁睡眠：否则后台线程可能一直抢不到锁，导致误报超时
                 std::this_thread::sleep_for(std::chrono::milliseconds(25));
             }
         }
