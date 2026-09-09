@@ -70,6 +70,23 @@ make test
 
 ## 部署
 
+### 直接拉镜像（推荐）
+
+仓库配置了 CD：每次推送到 `feature/cloud-drive` / `main`，GitHub Actions 会先跑
+`make test`，再把镜像推送到 GHCR（见 `.github/workflows/publish.yml`）。
+服务器不需要 clone 源码或编译，只要 Docker：
+
+```bash
+docker pull ghcr.io/yeteng101/reactor-http:latest
+```
+
+服务器部署（只拉镜像）完整步骤见
+[deploy/SERVER_GUIDE.md](deploy/SERVER_GUIDE.md) 第 2 节，编排文件为
+[deploy/docker-compose.ghcr.yml](deploy/docker-compose.ghcr.yml)；
+更新时 `docker compose pull && docker compose up -d` 即可，数据卷保留。
+
+### 源码构建
+
 阿里云 ECS、Windows（Docker Desktop）、Linux systemd 三种方式的完整步骤见
 [deploy/DEPLOY.md](deploy/DEPLOY.md)，一键编排文件在
 [deploy/docker-compose.yml](deploy/docker-compose.yml)。

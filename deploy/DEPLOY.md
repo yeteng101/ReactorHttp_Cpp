@@ -66,7 +66,39 @@ sudo usermod -aG docker $USER
 # 重新登录一次 SSH 使 docker 组生效
 ```
 
-### 2.3 拉代码并部署
+### 2.3 方式 A（推荐）：直接拉 GHCR 镜像（不在服务器编译）
+
+仓库已配置 CD：每次推送到 `feature/cloud-drive` / `main`，GitHub Actions 会先跑测试，
+再把镜像推到 GHCR（见 `.github/workflows/publish.yml`）。服务器只用 Docker，不用编译：
+
+```bash
+mkdir -p /opt/netdisk && cd /opt/netdisk
+
+# 部署三件套；compose 存成 docker-compose.yml，后续命令不用加 -f
+curl -fsSL -o docker-compose.yml \
+  https://raw.githubusercontent.com/yeteng101/ReactorHttp_Cpp/feature/cloud-drive/deploy/docker-compose.ghcr.yml
+curl -fsSL -o Caddyfile \
+  https://raw.githubusercontent.com/yeteng101/ReactorHttp_Cpp/feature/cloud-drive/deploy/Caddyfile
+curl -fsSL -o .env \
+  https://raw.githubusercontent.com/yeteng101/ReactorHttp_Cpp/feature/cloud-drive/deploy/.env.example
+vi .env                      # 确认 DOMAIN=yeteng.xin，A 记录已指向本机公网 IP
+
+docker compose pull          # 从 GHCR 拉镜像
+docker compose up -d
+docker compose ps
+```
+
+镜像标签：`latest`（跟随 `feature/cloud-drive` 最新构建）、`v3.1.0`（打 tag 的版本）、
+`sha-xxxxxxx`（精确到提交）。以后升级只需 `docker compose pull && docker compose up -d`，
+数据卷 `netdisk-data` / `netdisk-users` 原样保留。
+
+> GHCR 包默认私有：到 GitHub → 头像 → **Your packages** → `reactor-http` →
+> Package settings → Change visibility → **Public**；或服务器执行
+> `echo <PAT> | docker login ghcr.io -u yeteng101 --password-stdin`（PAT 勾选 `read:packages`）。
+
+更精简的实操版见 [SERVER_GUIDE.md](SERVER_GUIDE.md) 第 2 节。
+
+### 2.4 方式 B：拉代码并部署
 
 ```bash
 git clone git@github.com:yeteng101/ReactorHttp_Cpp.git
@@ -93,14 +125,14 @@ docker compose logs -f netdisk
 
 几分钟后访问 `https://yeteng.xin`，点「注册」用邮箱创建账号（或用上面的 author 账号）。
 
-### 2.4 不想要域名？先 IP 直连测试
+### 2.5 不想要域名？先 IP 直连测试
 
 ```bash
 docker compose run --rm netdisk \
   /app/reactor-http --add-user author:你的密码 \
   --users-file /etc/reactor-http/users.conf --drive-root /data
 
-# 编辑 deploy/docker-compose.yml，把 netdisk 服务里的
+# 编辑 docker-compose.yml（方式 A 在 /opt/netdisk，方式 B 在 deploy/），把 netdisk 服务里的
 #   # ports:
 #   #   - "18080:18080"
 # 两行取消注释，然后只启动网盘服务：
@@ -111,7 +143,7 @@ docker compose ps
 然后在阿里云安全组放行 **18080** 端口，浏览器访问 `http://公网IP:18080`。
 （仅调试：HTTP 明文 + 无 HTTPS 时密码会明文传输，正式使用请用域名 + Caddy。）
 
-### 2.5 域名和 IP 的关系（必读）
+### 2.6 域名和 IP 的关系（必读）
 
 - **IP 是服务器的门牌号**，别人要访问你的网站，最后总得连到一个 IP。
 - **域名是给人记的名字**，DNS 系统负责把 `yeteng.xin` 翻译成 IP。
@@ -122,7 +154,7 @@ docker compose ps
 - 有了域名后不要访问 `http://IP:18080`，而是配好 Caddy 后访问
   `https://yeteng.xin`：域名负责好记 + 证书校验，Caddy 负责 HTTPS，IP 只躲在后面。
 
-### 2.6 文档编辑器 + AI 助手
+### 2.7 文档编辑器 + AI 助手
 
 本分支前端已内置：
 
@@ -142,7 +174,7 @@ API 地址：https://api.openai.com/v1   # DeepSeek: https://api.deepseek.com/v1
 Key：    sk-xxxxxxxx
 ```
 
-### 2.7 GitHub / Apple 第三方登录
+### 2.8 GitHub / Apple 第三方登录
 
 先在 `.env` 中配置对应变量（见 `.env.example`），重启生效：
 
@@ -277,8 +309,16 @@ docker compose exec netdisk tar czf - -C /etc/reactor-http . > netdisk-users-bac
 ### 升级
 
 ```bash
+# 方式 A（推荐）：拉新镜像，不编译
+cd /opt/netdisk
+docker compose pull
+docker compose up -d
+docker compose ps
+
+# 方式 B：拉源码重新编译
+cd /opt/ReactorHttp-Cpp
 git pull --rebase origin feature/cloud-drive
-docker compose up -d --build          # 镜像标签不变时加 --force-recreate
+cd deploy && docker compose up -d --build   # 镜像标签不变时加 --force-recreate
 docker compose ps
 ```
 
