@@ -42,7 +42,7 @@ void printUsage(const char* program)
         "  --users-file <path>            user password file (default users.conf)\n"
         "  --add-user <name:password>     create/update a user then exit\n"
         "  --no-register                  disable web email registration\n"
-        "  --sidecar-url <url>            local AI/OAuth bridge (default http://127.0.0.1:18666)\n"
+        "  --sidecar-url <url>            GitHub/Apple OAuth bridge (default http://127.0.0.1:18666)\n"
         "  --help                         show this help\n",
         program, program);
 }

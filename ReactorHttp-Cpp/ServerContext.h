@@ -17,7 +17,7 @@ struct ServerContext
     bool registrationEnabled = true;
     std::string driveRoot;
     std::string usersFile;
-    std::string sidecarUrl;   // 仅 GitHub/Apple OAuth 需要；AI 已由 C++ 直连
+    std::string sidecarUrl;   // 仅 GitHub/Apple OAuth 需要；AI 由 C++ 直连
     UserStore users;
     SessionStore sessions;
     // AI 配置 + 后台流式任务（C++ 直接访问 OpenAI 兼容接口）

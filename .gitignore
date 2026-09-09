@@ -5,6 +5,7 @@ build/
 # 本地网盘数据与账号文件（运行时生成）
 data/
 users.conf
+ai-config.json
 cookies.txt
 deploy/.env
 sidecar-config.json
