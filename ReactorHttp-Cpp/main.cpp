@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <csignal>
 #include <filesystem>
+#include <fstream>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace fs = std::filesystem;
@@ -122,16 +124,19 @@ int main(int argc, char* argv[])
             return addUserAndExit(config, context, argv[0]);
         }
 
-        // 正式启动前必须已配置至少一个用户，避免网盘锁死
+        // 允许先启动、再在网页上用邮箱注册；users.conf 不存在时创建空文件
         std::string loadError;
         if (!fs::exists(context.usersFile, error))
         {
-            fprintf(stderr,
-                "Users file %s does not exist. Create the first user first, for example:\n"
-                "  %s --drive-root %s --users-file %s --add-user author:your-password\n",
-                context.usersFile.c_str(), argv[0], context.driveRoot.c_str(),
-                context.usersFile.c_str());
-            return EXIT_FAILURE;
+            std::ofstream touch(context.usersFile, std::ios::app);
+            if (!touch.good())
+            {
+                fprintf(stderr, "Cannot create users file %s\n", context.usersFile.c_str());
+                return EXIT_FAILURE;
+            }
+            touch.close();
+            chmod(context.usersFile.c_str(), 0600);
+            fprintf(stderr, "Created empty users file %s.\n", context.usersFile.c_str());
         }
         if (!context.users.load(context.usersFile, loadError))
         {
@@ -142,15 +147,25 @@ int main(int argc, char* argv[])
         if (context.users.count() == 0)
         {
             fprintf(stderr,
-                "No users configured. Create the first user first, for example:\n"
-                "  %s --drive-root %s --users-file %s --add-user author:your-password\n",
-                argv[0], context.driveRoot.c_str(), context.usersFile.c_str());
-            return EXIT_FAILURE;
+                "No users yet. Open the web UI and register with your email"
+                " (or run --add-user author:your-password).\n");
+        }
+
+        // AI 配置与后台流式任务：由 C++ 服务器直连 OpenAI 兼容接口，无需 sidecar
+        context.ai = std::make_shared<AiService>();
+        const std::string aiConfigPath =
+            (fs::path(context.usersFile).parent_path() / "ai-config.json").string();
+        std::string aiError;
+        if (!context.ai->load(aiConfigPath, aiError))
+        {
+            fprintf(stderr, "Cannot load AI config %s: %s\n", aiConfigPath.c_str(),
+                aiError.c_str());
         }
     }
     config.driveRoot = context.driveRoot;
     config.usersFile = context.usersFile;
     context.sidecarUrl = config.sidecarUrl;
+    context.registrationEnabled = config.registrationEnabled;
 
     // 切换工作目录到静态根目录，后续路径解析都以它为准
     if (!fs::is_directory(config.webRoot, error))

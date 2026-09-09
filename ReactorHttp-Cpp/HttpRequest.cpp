@@ -894,8 +894,9 @@ bool HttpRequest::processHttpRequest(HttpResponse* response)
     // 网盘模式：/api/* 统一走 DriveServer（登录、鉴权、文件管理），
     // 非网盘模式下保留原有 /api/files 公开接口（供无鉴权场景与回归测试使用）。
     if (m_context != nullptr && m_context->driveEnabled &&
-        (requestPath == "/api/login" || requestPath == "/api/logout" ||
-         requestPath == "/api/me" || requestPath.compare(0, 11, "/api/drive/") == 0 ||
+        (requestPath == "/api/login" || requestPath == "/api/register" ||
+         requestPath == "/api/logout" || requestPath == "/api/me" ||
+         requestPath.compare(0, 11, "/api/drive/") == 0 ||
          requestPath.compare(0, 10, "/api/files") == 0 ||
          requestPath.compare(0, 11, "/api/oauth/") == 0 ||
          requestPath.compare(0, 8, "/api/ai/") == 0))

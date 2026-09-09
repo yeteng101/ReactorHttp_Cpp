@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: 编译并运行测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 OpenSSL 开发库（AI 直连 TLS）
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+
+      - name: make test（编译 + 运行单元测试）
+        run: make test
+
+      - name: 验证主服务 Docker 镜像可构建
+        run: docker build -f Dockerfile .

@@ -153,6 +153,7 @@
     state.aiDoc = null;
     state.uploads.clear();
     renderUploadPanel();
+    switchAuthTab("login");
     refreshOAuth();
   }
 
@@ -957,7 +958,7 @@
       return payload;
     } catch (error) {
       aiStatusCache = null;
-      chip.textContent = "sidecar 未启动";
+      chip.textContent = "AI 服务不可用";
       if (status) status.textContent = error.message;
       return null;
     }
@@ -1029,42 +1030,74 @@
     }
     const button = $("ai-run-btn");
     const status = $("ai-status");
+    const out = $("ai-result-text");
+    const wrap = $("ai-result-wrap");
+    const thinking = $("ai-thinking");
     button.disabled = true;
-    status.textContent = "AI 思考中（大文档可能要十几秒）…";
+    state.aiResult = "";
+    out.textContent = "";
+    wrap.classList.remove("hidden");
+    thinking.classList.remove("hidden");
+    $("ai-copy-btn").classList.add("hidden");
+    $("ai-apply-btn").classList.add("hidden");
+    $("ai-append-btn").classList.add("hidden");
+    status.textContent = "AI 正在思考…";
+
     try {
       const context = aiContextText();
-      const messages = [
-        {
-          role: "system",
-          content: "你是藤のnetdisk 内置的写作与编辑助手。用户可能给你整篇文档或选中片段。" +
-            "除非指令另有要求，请直接输出可落盘的完整结果，不要寒暄、不要加解释前缀。"
-        },
-        {
-          role: "user",
-          content: prompt +
-            (context ? "\n\n以下是被编辑文档" +
-              (state.aiDoc.name ? "「" + state.aiDoc.name + "」" : "") + "的内容：\n```\n" +
-              context + "\n```" : "")
-        }
-      ];
       const payload = await api("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, temperature: 0.4, maxTokens: 4096 })
+        body: JSON.stringify({ prompt, context })
       });
-      const content = (payload && payload.content) || "";
-      state.aiResult = content;
-      $("ai-result-text").textContent = content || "（AI 返回了空内容）";
-      $("ai-result-wrap").classList.remove("hidden");
-      $("ai-copy-btn").classList.remove("hidden");
-      const withDoc = !!state.aiDoc;
-      $("ai-apply-btn").classList.toggle("hidden", !withDoc);
-      $("ai-append-btn").classList.toggle("hidden", !withDoc);
-      status.textContent = payload && payload.model ? "完成 · " + payload.model : "完成";
+      const jobId = payload && payload.jobId;
+      if (!jobId) {
+        throw new Error("服务器没有返回任务 ID");
+      }
+      let lastLength = 0;
+      let finished = false;
+      for (let attempt = 0; attempt < 1800 && !finished; attempt += 1) {
+        await sleep(320);
+        const job = await api("/api/ai/stream?job=" + encodeURIComponent(jobId));
+        if (job && typeof job.text === "string") {
+          state.aiResult = job.text;
+          if (job.text.length !== lastLength) {
+            lastLength = job.text.length;
+            out.textContent = job.text;
+            out.scrollTop = out.scrollHeight;
+          }
+        }
+        if (job && job.done) {
+          finished = true;
+          thinking.classList.add("hidden");
+          if (!job.ok) {
+            status.textContent = job.error || "生成失败";
+            out.textContent = (job.text || "") +
+              (job.text ? "\n\n" : "") + "⚠️ " + (job.error || "生成失败");
+            state.aiResult = job.text || "";
+          } else {
+            status.textContent = job.model ? "完成 · " + job.model : "完成";
+            if (!job.text) {
+              out.textContent = "（AI 返回了空内容）";
+            }
+          }
+        }
+      }
+      if (!finished) {
+        thinking.classList.add("hidden");
+        status.textContent = "生成超时，请稍后重试";
+      }
+      if (state.aiResult) {
+        $("ai-copy-btn").classList.remove("hidden");
+        const withDoc = !!state.aiDoc;
+        $("ai-apply-btn").classList.toggle("hidden", !withDoc);
+        $("ai-append-btn").classList.toggle("hidden", !withDoc);
+      }
     } catch (error) {
+      thinking.classList.add("hidden");
       status.textContent = error.message;
-      $("ai-result-wrap").classList.remove("hidden");
-      $("ai-result-text").textContent = "请求失败：" + error.message;
+      out.textContent = "请求失败：" + error.message;
+      wrap.classList.remove("hidden");
     } finally {
       button.disabled = false;
     }
@@ -1214,6 +1247,53 @@
     }
   }
 
+  /* ---------------- 登录 / 注册 ---------------- */
+  function switchAuthTab(tab) {
+    const isLogin = tab !== "register";
+    $("tab-login").classList.toggle("active", isLogin);
+    $("tab-register").classList.toggle("active", !isLogin);
+    $("login-form").classList.toggle("hidden", !isLogin);
+    $("register-form").classList.toggle("hidden", isLogin);
+    $("login-error").classList.add("hidden");
+    $("register-error").classList.add("hidden");
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    const email = $("register-email").value.trim();
+    const password = $("register-password").value;
+    const confirm = $("register-confirm").value;
+    const error = $("register-error");
+    error.classList.add("hidden");
+    if (password !== confirm) {
+      error.textContent = "两次输入的密码不一致";
+      error.classList.remove("hidden");
+      return;
+    }
+    const button = $("register-btn");
+    button.disabled = true;
+    button.querySelector(".btn-label").textContent = "注册中…";
+    button.querySelector(".spinner").classList.remove("hidden");
+    try {
+      const payload = await api("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      $("register-password").value = "";
+      $("register-confirm").value = "";
+      showApp(payload.username);
+      toast("注册成功，欢迎加入", "ok");
+    } catch (err) {
+      error.textContent = err.message;
+      error.classList.remove("hidden");
+    } finally {
+      button.disabled = false;
+      button.querySelector(".btn-label").textContent = "注 册";
+      button.querySelector(".spinner").classList.add("hidden");
+    }
+  }
+
   /* ---------------- 登录 ---------------- */
   async function handleLogin(event) {
     event.preventDefault();
@@ -1277,6 +1357,9 @@
   /* ---------------- 事件绑定 ---------------- */
   function bindEvents() {
     $("login-form").addEventListener("submit", handleLogin);
+    $("register-form").addEventListener("submit", handleRegister);
+    $("tab-login").addEventListener("click", () => switchAuthTab("login"));
+    $("tab-register").addEventListener("click", () => switchAuthTab("register"));
     $("logout-btn").addEventListener("click", handleLogout);
     $("oauth-github-btn").addEventListener("click", () => oauthBegin("github"));
     $("oauth-apple-btn").addEventListener("click", () => oauthBegin("apple"));

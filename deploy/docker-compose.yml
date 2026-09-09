@@ -26,7 +26,7 @@ services:
     #   - "18080:18080"
 
   sidecar:
-    # AI 网关 + GitHub/Apple OAuth 桥接：浏览器不直连，由 netdisk 本机转发
+    # 仅用于 GitHub/Apple OAuth 的 HTTPS 桥接；AI 已由 netdisk(C++) 直连，不再需要它
     build:
       context: ../sidecar
       dockerfile: Dockerfile
@@ -36,10 +36,8 @@ services:
       TZ: Asia/Shanghai
       SIDECAR_LISTEN: 0.0.0.0:18666
       SIDECAR_PUBLIC_BASE_URL: https://${DOMAIN:-localhost}
-      # —— AI（也可登录后在网页「AI 设置」里改；环境变量优先级更高）——
-      SIDECAR_AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
-      SIDECAR_AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
-      SIDECAR_AI_API_KEY: ${AI_API_KEY:-}
+      # 注意：AI 配置在网页「AI 设置」里填写，保存在 netdisk 的 ai-config.json，
+      # 由 C++ 服务直接访问 OpenAI 兼容接口（流式输出），这里不再注入 SIDECAR_AI_*。
       # —— GitHub OAuth（https://github.com/settings/developers 注册 App）——
       SIDECAR_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
       SIDECAR_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}

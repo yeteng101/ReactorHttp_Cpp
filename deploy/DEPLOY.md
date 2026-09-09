@@ -21,7 +21,7 @@ make release        # -O2 生产编译
 make test           # HTTP + 网盘接口回归测试
 ```
 
-创建第一个账号（任意目录都可运行，示例在当前目录）：
+创建第一个账号（可选：也可以启动后在网页点「注册」用邮箱创建）：
 
 ```bash
 ./build/reactor-http \
@@ -78,10 +78,10 @@ cd deploy
 cp .env.example .env
 sed -i '' 's/^DOMAIN=.*/DOMAIN=yeteng.xin/' .env    # Linux 上 sed -i 不带 ''
 
-# 第一次创建作者账号（数据卷会自动建好）
-docker compose run --rm netdisk \
-  /app/reactor-http --add-user author:你的强密码 \
-  --users-file /etc/reactor-http/users.conf --drive-root /data
+# 启动后网页点「注册」用邮箱建号即可；想先用命令行建号可执行：
+# docker compose run --rm netdisk \
+#   /app/reactor-http --add-user author:你的强密码 \
+#   --users-file /etc/reactor-http/users.conf --drive-root /data
 
 # 启动网盘 + Caddy（自动申请 HTTPS 证书）
 docker compose up -d --build
@@ -91,7 +91,7 @@ docker compose ps
 docker compose logs -f netdisk
 ```
 
-几分钟后访问 `https://yeteng.xin`，用刚才的 author 账号登录。
+几分钟后访问 `https://yeteng.xin`，点「注册」用邮箱创建账号（或用上面的 author 账号）。
 
 ### 2.4 不想要域名？先 IP 直连测试
 
@@ -131,14 +131,15 @@ docker compose ps
 - **AI 助手**：`⌘/Ctrl+J` 在任意文档里召唤，可润色 / 改写 / 翻译 / 总结 /
   自定义指令，结果一键「替换全文」或「插到文末」；
 - **AI 设置**：AI 面板右上角齿轮填写 OpenAI 兼容接口（OpenAI / DeepSeek /
-  通义 / Moonshot），API Key 只存服务器 sidecar，不下发浏览器。
+  通义 / Moonshot），配置保存在服务器 `ai-config.json`（权限 600），
+  由 C++ 服务**直连**接口并 SSE 流式输出，实时显示思考过程，**无需 sidecar**。
 
-在 `deploy/.env` 里填（或用网页设置）：
+登录后直接在网页「AI 设置」里填 API 地址 / 模型 / Key 即可，不需要改 `.env`：
 
-```bash
-AI_BASE_URL=https://api.openai.com/v1   # DeepSeek: https://api.deepseek.com/v1
-AI_MODEL=gpt-4o-mini                    # DeepSeek: deepseek-chat
-AI_API_KEY=sk-xxxxxxxx
+```text
+API 地址：https://api.openai.com/v1   # DeepSeek: https://api.deepseek.com/v1
+模型：   gpt-4o-mini                  # DeepSeek: deepseek-chat
+Key：    sk-xxxxxxxx
 ```
 
 ### 2.7 GitHub / Apple 第三方登录
@@ -326,7 +327,7 @@ docker compose up -d --force-recreate netdisk
   环境编译、跑到旧系统。本项目 Dockerfile 用 `gcc:14-bookworm` 构建 + `bookworm-slim`
   运行，两者一致，不存在该问题；裸机请用 Debian 12 / Ubuntu 22.04+ 编译运行。
 - **容器一直 Restarting**：先看日志 `docker logs fuji-netdisk`。最常见原因是
-  还没执行 `--add-user`（启动日志会提示），或 `/data`、`/etc/reactor-http` 无写权限。
+  数据卷 `/data`、`/etc/reactor-http` 无写权限，或启动参数写错（看日志具体报错）。
 - **HTTPS 证书不自动签发**：确认域名 A 记录已生效、服务器 80/443 从公网可达、
   没有在 Caddy 前面再套一层占用 80 端口的服务。
 - **上传几十 GB 大文件**：前端按 8MB 分片 + 断点续传，中断后重新选择同一文件会自动续传；

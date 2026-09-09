@@ -61,7 +61,12 @@ cp .env.example .env
 检查 `.env` 里 `DOMAIN=yeteng.xin`（必须已解析到本机公网 IP）。AI、GitHub/Apple 登录
 为可选项，参考文件内注释。
 
-## 4. 创建第一个账号
+## 4. 第一个账号：直接网页注册
+
+现在**不需要**预先建账号：启动后打开 `https://yeteng.xin`，点登录卡片的「注册」，
+用邮箱 + 密码创建即可（默认不发验证邮件）。
+
+想先用命令行建号、或想关闭网页注册，也可以：
 
 ```bash
 docker compose run --rm netdisk \
@@ -69,7 +74,8 @@ docker compose run --rm netdisk \
   --users-file /etc/reactor-http/users.conf --drive-root /data
 ```
 
-> 忘了这步容器会一直 Restarting（日志会提示先 --add-user）。
+> 关闭网页注册：在 `deploy/docker-compose.yml` 的 netdisk `command` 末尾追加
+> `--no-register` 后 `docker compose up -d --force-recreate netdisk`。
 
 ## 5. 构建并启动
 
@@ -90,7 +96,7 @@ curl -sI https://yeteng.xin | head -1          # 期待 HTTP/2 200
 docker compose ps                              # netdisk/sidecar/caddy 全部 Up
 ```
 
-浏览器打开 `https://yeteng.xin`，用第 4 步的账号登录。
+浏览器打开 `https://yeteng.xin`，用刚注册的邮箱登录（或用第 4 步的账号）。
 证书由 Caddy 自动申请（Let's Encrypt），首次签发需等约 30 秒~1 分钟。
 
 ## 7. 日常运维速查
@@ -120,7 +126,7 @@ docker compose run --rm netdisk /app/reactor-http --add-user 用户名:新密码
 
 ## 8. 快速排错
 
-- **容器 Restarting**：`docker compose logs netdisk`；最常见是没执行 `--add-user`。
+- **容器 Restarting**：`docker compose logs netdisk`；先看日志里的具体报错。
 - **证书不签发**：A 记录是否指向公网 IP、80/443 是否放行、服务器时间是否准确。
 - **想用 IP 直连调试**（无域名）：`docker-compose.yml` 里取消 `18080:18080` 注释并放行
   安全组 18080，只启 netdisk：`docker compose up -d --build netdisk`。仅限调试。

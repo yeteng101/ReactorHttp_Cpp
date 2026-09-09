@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light">
   <title>藤のnetdisk · 你的私有知识库</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
@@ -15,60 +15,104 @@
     <div class="blob blob-c"></div>
   </div>
 
-  <!-- 登录视图 -->
+  <!-- 登录 / 注册视图 -->
   <main id="view-login" class="login-wrap">
-    <section class="login-card glass">
-      <div class="brand">
-        <div class="brand-mark">
-          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
-               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6.5 19a4.5 4.5 0 0 1-.4-8.99 6 6 0 0 1 11.6-1.6A4.7 4.7 0 0 1 17.5 19z"/>
-            <path d="M12 10v6"/>
-            <path d="m9.5 13.5 2.5-2.5 2.5 2.5"/>
-          </svg>
-        </div>
-        <h1>藤のnetdisk</h1>
-        <p>像 Notion 一样写作 · 像网盘一样存储</p>
+    <section class="login-shell">
+      <div class="login-hero">
+        <span class="hero-badge">✦ 藤のnetdisk 3.0</span>
+        <h1>你的私有知识库<br><span class="accent">写作 · 存储 · AI 助手</span></h1>
+        <p class="hero-sub">部署在自己服务器上的轻量网盘：文档在线编辑、AI 写作助手、
+          分片断点续传、多用户目录隔离，数据始终握在你自己手里。</p>
+        <ul class="hero-features">
+          <li><span class="tick">✓</span>Notion 式 Markdown 编辑</li>
+          <li><span class="tick">✓</span>AI 流式写作助手</li>
+          <li><span class="tick">✓</span>8MB 分片断点续传</li>
+          <li><span class="tick">✓</span>视频音频在线播放</li>
+        </ul>
       </div>
 
-      <form id="login-form" autocomplete="on">
-        <label class="field">
-          <span>账号</span>
-          <input id="login-username" name="username" type="text" required autocomplete="username"
-                 placeholder="请输入账号" spellcheck="false">
-        </label>
-        <label class="field">
-          <span>密码</span>
-          <input id="login-password" name="password" type="password" required autocomplete="current-password"
-                 placeholder="请输入密码">
-        </label>
-        <button id="login-btn" class="btn btn-primary btn-block" type="submit">
-          <span class="btn-label">登 录</span>
-          <span class="spinner hidden" aria-hidden="true"></span>
-        </button>
-      <p id="login-error" class="form-error hidden"></p>
-      </form>
-
-      <div class="oauth-area hidden" id="oauth-area">
-        <div class="oauth-divider"><span>或使用第三方账号登录</span></div>
-        <div class="oauth-buttons">
-          <button class="btn btn-oauth" id="oauth-github-btn" type="button" disabled>
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.26 5.68.41.35.78 1.05.78 2.12v3.14c0 .3.2.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/>
+      <section class="login-card">
+        <div class="auth-brand">
+          <div class="brand-mark">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6.5 19a4.5 4.5 0 0 1-.4-8.99 6 6 0 0 1 11.6-1.6A4.7 4.7 0 0 1 17.5 19z"/>
+              <path d="M12 10v6"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5"/>
             </svg>
-            <span>GitHub 登录</span>
-          </button>
-          <button class="btn btn-oauth" id="oauth-apple-btn" type="button" disabled>
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
-              <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-            </svg>
-            <span>Apple 登录</span>
-          </button>
+          </div>
+          <div>
+            <strong>藤のnetdisk</strong>
+            <span>欢迎回来</span>
+          </div>
         </div>
-      </div>
 
-      <p class="login-hint">首次使用：点上方第三方登录会自动创建账号；
-        也可在服务器执行 <code>reactor-http --add-user 用户名:密码</code></p>
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" id="tab-login" type="button" role="tab">登录</button>
+          <button class="auth-tab" id="tab-register" type="button" role="tab">注册</button>
+        </div>
+
+        <form id="login-form" autocomplete="on">
+          <label class="field">
+            <span>账号 / 邮箱</span>
+            <input id="login-username" name="username" type="text" required autocomplete="username"
+                   placeholder="请输入账号或邮箱" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="login-password" name="password" type="password" required autocomplete="current-password"
+                   placeholder="请输入密码">
+          </label>
+          <button id="login-btn" class="btn btn-primary btn-block" type="submit">
+            <span class="btn-label">登 录</span>
+            <span class="spinner hidden" aria-hidden="true"></span>
+          </button>
+          <p id="login-error" class="form-error hidden"></p>
+        </form>
+
+        <form id="register-form" class="hidden" autocomplete="on">
+          <label class="field">
+            <span>邮箱</span>
+            <input id="register-email" name="email" type="email" required autocomplete="email"
+                   placeholder="you@example.com" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="register-password" name="password" type="password" required
+                   autocomplete="new-password" placeholder="至少 6 位">
+          </label>
+          <label class="field">
+            <span>确认密码</span>
+            <input id="register-confirm" name="confirm" type="password" required
+                   autocomplete="new-password" placeholder="再输入一次">
+          </label>
+          <button id="register-btn" class="btn btn-primary btn-block" type="submit">
+            <span class="btn-label">注 册</span>
+            <span class="spinner hidden" aria-hidden="true"></span>
+          </button>
+          <p id="register-error" class="form-error hidden"></p>
+        </form>
+
+        <div class="oauth-area hidden" id="oauth-area">
+          <div class="oauth-divider"><span>或使用第三方账号</span></div>
+          <div class="oauth-buttons">
+            <button class="btn btn-oauth" id="oauth-github-btn" type="button" disabled>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+                <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.26 5.68.41.35.78 1.05.78 2.12v3.14c0 .3.2.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/>
+              </svg>
+              <span>GitHub 登录</span>
+            </button>
+            <button class="btn btn-oauth" id="oauth-apple-btn" type="button" disabled>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+                <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+              </svg>
+              <span>Apple 登录</span>
+            </button>
+          </div>
+        </div>
+
+        <p class="login-hint">注册即可使用；也可以让管理员在服务器执行
+          <code>reactor-http --add-user 用户名:密码</code></p>
+      </section>
     </section>
   </main>
 
@@ -325,6 +369,10 @@
             </div>
           </div>
           <pre class="ai-output" id="ai-result-text"></pre>
+          <div class="ai-thinking hidden" id="ai-thinking">
+            <span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>
+            <span id="ai-thinking-label">正在思考…</span>
+          </div>
         </div>
       </div>
     </div>
@@ -356,8 +404,9 @@
         </label>
         <label class="ai-check"><input type="checkbox" id="ai-key-clear">
           <span>清除服务器上已保存的 Key</span></label>
-        <p class="config-note">Key 只保存在你自己的服务器（sidecar 配置文件，权限 600），
-          不会下发到浏览器；支持 OpenAI、DeepSeek、通义、Moonshot 等 OpenAI 兼容接口。</p>
+        <p class="config-note">Key 只保存在你服务器的 <code>ai-config.json</code>（权限 600），
+          由 C++ 服务直接访问接口，不会下发到浏览器、也无需 sidecar；
+          支持 OpenAI、DeepSeek、通义、Moonshot 等 OpenAI 兼容接口。</p>
         <p class="form-error hidden" id="ai-config-error"></p>
       </div>
       <footer class="config-footer">

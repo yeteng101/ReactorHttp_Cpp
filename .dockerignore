@@ -3,3 +3,8 @@ ReactorHttp-Cpp/obj
 build
 readme
 *.sln
+.git
+.github
+deploy
+data
+users.conf

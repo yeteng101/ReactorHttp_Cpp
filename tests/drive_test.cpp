@@ -154,6 +154,13 @@ int main()
     context.driveRoot = driveRoot;
     context.usersFile = usersFile;
     context.driveEnabled = true;
+    context.ai = std::make_shared<AiService>();
+    std::string aiError;
+    if (!context.ai->load(temp.path + "/ai-config.json", aiError))
+    {
+        std::cerr << "ai service setup failed: " << aiError << '\n';
+        return EXIT_FAILURE;
+    }
     std::string storeError;
     if (!context.users.load(usersFile, storeError) ||
         !context.users.create("author", "secret123", storeError) ||
@@ -302,6 +309,67 @@ int main()
         readerList.find("greeting.txt") != std::string::npos)
     {
         fail("reader must not see author files:\n" + readerList);
+    }
+
+    // AI：未配置时 status.configured=false，chat 返回 503
+    {
+        const std::string status = execute(context,
+            "GET /api/ai/status HTTP/1.1\r\nHost: localhost\r\n" + auth + "\r\n");
+        expectBodyContains(status, "\"configured\":false", "ai status unconfigured");
+        const std::string chatBody = "{\"prompt\":\"hi\"}";
+        expectStatus(context,
+            "POST /api/ai/chat HTTP/1.1\r\nHost: localhost\r\n" + auth +
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(chatBody.size()) + "\r\n\r\n" + chatBody,
+            503, "ai chat unconfigured");
+    }
+
+    // AI 配置写入后立即生效（不再依赖 sidecar）
+    {
+        const std::string configBody =
+            "{\"baseUrl\":\"http://127.0.0.1:19999/v1\",\"model\":\"mock-model\","
+            "\"apiKey\":\"sk-test\"}";
+        const std::string saved = execute(context,
+            "POST /api/ai/config HTTP/1.1\r\nHost: localhost\r\n" + auth +
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(configBody.size()) + "\r\n\r\n" + configBody);
+        expectBodyContains(saved, "\"configured\":true", "ai config saved");
+        expectBodyContains(saved, "\"model\":\"mock-model\"", "ai config model");
+        const std::string status = execute(context,
+            "GET /api/ai/status HTTP/1.1\r\nHost: localhost\r\n" + auth + "\r\n");
+        expectBodyContains(status, "\"configured\":true", "ai status configured");
+    }
+
+    // 邮箱注册：合法邮箱成功、重复邮箱 409、非法邮箱 400
+    {
+        const std::string body = "{\"email\":\"newbie@example.com\",\"password\":\"pass123\"}";
+        const std::string response = execute(context,
+            "POST /api/register HTTP/1.1\r\nHost: localhost\r\n"
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(body.size()) + "\r\n\r\n" + body);
+        if (!startsWith(response, "HTTP/1.1 200 "))
+        {
+            fail("register email failed:\n" + response);
+        }
+        expectBodyContains(response, "\"username\":\"newbie@example.com\"", "register email user");
+        expectStatus(context,
+            "POST /api/register HTTP/1.1\r\nHost: localhost\r\n"
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(body.size()) + "\r\n\r\n" + body,
+            409, "register duplicate email");
+        const std::string bad = "{\"email\":\"not-an-email\",\"password\":\"pass123\"}";
+        expectStatus(context,
+            "POST /api/register HTTP/1.1\r\nHost: localhost\r\n"
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(bad.size()) + "\r\n\r\n" + bad,
+            400, "register invalid email");
+        context.registrationEnabled = false;
+        expectStatus(context,
+            "POST /api/register HTTP/1.1\r\nHost: localhost\r\n"
+            "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(body.size()) + "\r\n\r\n" + body,
+            403, "register disabled");
+        context.registrationEnabled = true;
     }
 
     // 注销后 token 失效

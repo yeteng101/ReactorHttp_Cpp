@@ -143,6 +143,12 @@ bool UserStore::create(const std::string& username, const std::string& password,
     return save(m_path, error);
 }
 
+bool UserStore::exists(const std::string& username) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_users.find(username) != m_users.end();
+}
+
 bool UserStore::ensureOAuthUser(const std::string& username, const std::string& origin,
     std::string& error)
 {

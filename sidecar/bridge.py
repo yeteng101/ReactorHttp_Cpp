@@ -3,12 +3,12 @@
 """
 藤のnetdisk Sidecar —— 给 C++ 网盘补齐「外网 HTTPS」能力。
 
-职责：
-  1. AI 网关：持有 API Key，向任意 OpenAI 兼容接口（OpenAI / DeepSeek /
-     Moonshot / 通义等）转发聊天请求，C++ 服务器只在本机访问本服务；
-  2. OAuth：GitHub、Apple 登录的授权码交换与身份获取。
+职责（现在主要用于 OAuth）：
+  1. OAuth：GitHub、Apple 登录的授权码交换与身份获取；
+  2. AI 网关（保留的兼容入口）：C++ 版已经自带 OpenSSL TLS + SSE 流式直连，
+     默认不再经过本服务；仅当你单独使用本脚本时才需要下面的 AI 配置。
 
-浏览器永远不直接访问本服务，所以 API Key / OAuth Secret 不会暴露到前端。
+浏览器永远不直接访问本服务，所以 OAuth Secret / API Key 不会暴露到前端。
 
 用法：
   python3 sidecar/bridge.py --config ./sidecar-config.json
@@ -95,14 +95,17 @@ def env_config():
 
 def load_config():
     global CONFIG
+    # 优先级：默认值 < 环境变量 < 配置文件。
+    # 这样网页「AI 设置」写回的配置不会被 compose 里的环境变量盖掉
+    # （旧版本是环境变量最后合并，导致模型/地址改完又被重置）。
     cfg = deep_merge(DEFAULTS, {})
+    cfg = deep_merge(cfg, env_config())
     try:
         if Path(CONFIG_PATH).is_file():
             with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
                 cfg = deep_merge(cfg, json.load(handle))
     except Exception as exc:  # 配置文件坏了也不阻塞服务，错误会在 /ai/status 显示
         cfg["_loadError"] = str(exc)
-    cfg = deep_merge(cfg, env_config())
     with CONFIG_LOCK:
         CONFIG = cfg
     return cfg

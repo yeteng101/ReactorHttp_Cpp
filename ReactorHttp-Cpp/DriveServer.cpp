@@ -592,8 +592,9 @@ bool safeOAuthUsername(const std::string& username)
     return true;
 }
 
-// 浏览器侧请求 /api/oauth/... 或 /api/ai/... 时，C++ 服务器把同路径
-// 去掉 /api 前缀后转发给本地 sidecar，例如 /api/ai/status -> /ai/status
+// 浏览器侧请求 /api/oauth/... 时，C++ 服务器把同路径去掉 /api 前缀后
+// 转发给本地 sidecar，例如 /api/oauth/status -> /oauth/status。
+// 注意：AI 已由 C++ 直接访问 OpenAI 兼容接口，不再经过 sidecar。
 std::string sidecarPathAndQuery(const std::string& requestPath, const HttpRequest& request)
 {
     std::string path = requestPath.substr(4);
@@ -708,6 +709,36 @@ void handleOAuthCallback(ServerContext& context, HttpRequest& request, HttpRespo
     setOauthSessionCookie(request, response, token, context);
 }
 
+// 登录/注册成功后：建家目录 + 种会话 Cookie，返回 JSON
+void finishLogin(ServerContext& context, HttpRequest& request, HttpResponse& response,
+    const std::string& username)
+{
+    std::error_code homeError;
+    const std::string home = homeRootFor(context, username);
+    if (!fs::create_directories(home, homeError) && homeError)
+    {
+        Log::error("cannot create user home %s: %s", home.c_str(),
+            homeError.message().c_str());
+        setJsonError(&response, StatusCode::InternalServerError, "cannot create user space");
+        return;
+    }
+
+    const std::string token = context.sessions.create(username);
+    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
+        "{\"ok\":true,\"username\":\"" + jsonEscape(username) + "\",\"token\":\"" + token + "\"}");
+    const int hours = context.sessions.sessionHours();
+    std::string cookie =
+        "sid=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" +
+        std::to_string(static_cast<long long>(hours) * 3600);
+    // 位于 Caddy/Nginx HTTPS 反代之后时，允许 cookie 带 Secure 标记
+    const std::string forwardedProto = request.getHeader("X-Forwarded-Proto");
+    if (strncasecmp(forwardedProto.c_str(), "https", 5) == 0)
+    {
+        cookie += "; Secure";
+    }
+    response.addHeader("Set-Cookie", cookie);
+}
+
 void handleLogin(ServerContext& context, HttpRequest& request, HttpResponse& response)
 {
     if (strcasecmp(request.method().c_str(), "POST") != 0)
@@ -744,31 +775,7 @@ void handleLogin(ServerContext& context, HttpRequest& request, HttpResponse& res
         setJsonError(&response, StatusCode::Unauthorized, "invalid username or password");
         return;
     }
-    // 首次登录时创建该用户的私有目录
-    std::error_code homeError;
-    const std::string home = homeRootFor(context, username);
-    if (!fs::create_directories(home, homeError) && homeError)
-    {
-        Log::error("cannot create user home %s: %s", home.c_str(),
-            homeError.message().c_str());
-        setJsonError(&response, StatusCode::InternalServerError, "cannot create user space");
-        return;
-    }
-
-    const std::string token = context.sessions.create(username);
-    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
-        "{\"ok\":true,\"username\":\"" + jsonEscape(username) + "\",\"token\":\"" + token + "\"}");
-    const int hours = context.sessions.sessionHours();
-    std::string cookie =
-        "sid=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" +
-        std::to_string(static_cast<long long>(hours) * 3600);
-    // 位于 Caddy/Nginx HTTPS 反代之后时，允许 cookie 带 Secure 标记
-    const std::string forwardedProto = request.getHeader("X-Forwarded-Proto");
-    if (strncasecmp(forwardedProto.c_str(), "https", 5) == 0)
-    {
-        cookie += "; Secure";
-    }
-    response.addHeader("Set-Cookie", cookie);
+    finishLogin(context, request, response, username);
 }
 
 void handleLogout(ServerContext& context, HttpRequest& request, HttpResponse& response)
@@ -776,6 +783,205 @@ void handleLogout(ServerContext& context, HttpRequest& request, HttpResponse& re
     context.sessions.remove(sessionToken(request));
     setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
         "{\"ok\":true}");
+}
+
+// 邮箱格式校验：够用即可（不做 DNS/MX 校验）
+bool looksLikeEmail(const std::string& value)
+{
+    if (value.empty() || value.size() > 254)
+    {
+        return false;
+    }
+    const std::size_t at = value.find('@');
+    if (at == std::string::npos || at == 0 || at + 1 >= value.size())
+    {
+        return false;
+    }
+    if (value.find('@', at + 1) != std::string::npos)
+    {
+        return false;
+    }
+    const std::size_t dot = value.find('.', at + 1);
+    if (dot == std::string::npos || dot == value.size() - 1)
+    {
+        return false;
+    }
+    for (char ch : value)
+    {
+        if (ch <= ' ' || ch == ':' || ch == '/' || ch == '\\' || ch == '\t')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// 网页邮箱注册（默认开启校验：合法邮箱 + 密码 >= 6 位；不发送验证邮件）
+void handleRegister(ServerContext& context, HttpRequest& request, HttpResponse& response)
+{
+    if (strcasecmp(request.method().c_str(), "POST") != 0)
+    {
+        setJsonError(&response, StatusCode::MethodNotAllowed, "method not allowed");
+        return;
+    }
+    if (!context.registrationEnabled)
+    {
+        setJsonError(&response, StatusCode::Forbidden, "registration is disabled");
+        return;
+    }
+    const std::string& body = request.getBody();
+    const std::string email = jsonStringValue(body, "email");
+    const std::string password = jsonStringValue(body, "password");
+    if (!looksLikeEmail(email))
+    {
+        setJsonError(&response, StatusCode::BadRequest, "请输入有效的邮箱地址");
+        return;
+    }
+    if (password.size() < 6)
+    {
+        setJsonError(&response, StatusCode::BadRequest, "密码至少需要 6 位");
+        return;
+    }
+    if (context.users.exists(email))
+    {
+        setJsonError(&response, StatusCode::Conflict, "该邮箱已注册，请直接登录");
+        return;
+    }
+    std::string createError;
+    if (!context.users.create(email, password, createError))
+    {
+        setJsonError(&response, StatusCode::BadRequest, createError);
+        return;
+    }
+    finishLogin(context, request, response, email);
+}
+
+// 构造 OpenAI 兼容 chat/completions 请求体（强制 stream=true）
+std::string buildAiRequestBody(const std::string& prompt, const std::string& docContext,
+    const AiConfig& config)
+{
+    const std::string systemPrompt =
+        "你是藤のnetdisk 内置的写作与编辑助手。用户可能给你整篇文档或选中片段。"
+        "除非指令另有要求，请直接输出可落盘的完整结果，不要寒暄、不要加解释前缀。";
+    std::string userContent = prompt;
+    if (!docContext.empty())
+    {
+        userContent += "\n\n以下是被编辑文档的内容：\n```\n" + docContext + "\n```";
+    }
+    std::ostringstream out;
+    out << "{\"model\":\"" << jsonEscape(config.model) << "\",\"stream\":true,"
+        << "\"temperature\":0.4,\"max_tokens\":4096,"
+        << "\"messages\":[{\"role\":\"system\",\"content\":\""
+        << jsonEscape(systemPrompt) << "\"},"
+        << "{\"role\":\"user\",\"content\":\"" << jsonEscape(userContent) << "\"}]}";
+    return out.str();
+}
+
+void writeAiStatus(ServerContext& context, HttpResponse& response)
+{
+    const AiConfig config = context.ai ? context.ai->snapshot() : AiConfig{};
+    std::ostringstream out;
+    out << "{\"ok\":true,\"configured\":" << (config.apiKey.empty() ? "false" : "true")
+        << ",\"baseUrl\":\"" << jsonEscape(config.baseUrl) << "\""
+        << ",\"model\":\"" << jsonEscape(config.model) << "\""
+        << ",\"apiKeyMasked\":\"" << (config.apiKey.empty() ? "" : "***") << "\"}";
+    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8", out.str());
+}
+
+void handleAiStatus(ServerContext& context, HttpResponse& response)
+{
+    if (!context.ai)
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable, "AI 服务未启用");
+        return;
+    }
+    writeAiStatus(context, response);
+}
+
+void handleAiConfig(ServerContext& context, HttpRequest& request, HttpResponse& response)
+{
+    if (!context.ai)
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable, "AI 服务未启用");
+        return;
+    }
+    if (strcasecmp(request.method().c_str(), "POST") != 0)
+    {
+        setJsonError(&response, StatusCode::MethodNotAllowed, "method not allowed");
+        return;
+    }
+    const std::string& body = request.getBody();
+    const std::string baseUrl = jsonStringValue(body, "baseUrl");
+    const std::string model = jsonStringValue(body, "model");
+    const bool keyProvided = body.find("\"apiKey\"") != std::string::npos;
+    const std::string apiKey = jsonStringValue(body, "apiKey");
+    const bool insecureProvided = body.find("\"insecureTls\"") != std::string::npos;
+    const bool insecureTls = body.find("\"insecureTls\":true") != std::string::npos;
+    std::string error;
+    if (!context.ai->update(baseUrl, model, apiKey, keyProvided, insecureTls,
+            insecureProvided, error))
+    {
+        setJsonError(&response, StatusCode::InternalServerError, error);
+        return;
+    }
+    writeAiStatus(context, response);
+}
+
+void handleAiChat(ServerContext& context, HttpRequest& request, HttpResponse& response)
+{
+    if (!context.ai)
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable, "AI 服务未启用");
+        return;
+    }
+    if (strcasecmp(request.method().c_str(), "POST") != 0)
+    {
+        setJsonError(&response, StatusCode::MethodNotAllowed, "method not allowed");
+        return;
+    }
+    const std::string& body = request.getBody();
+    const std::string prompt = jsonStringValue(body, "prompt");
+    if (prompt.empty())
+    {
+        setJsonError(&response, StatusCode::BadRequest, "prompt 不能为空");
+        return;
+    }
+    const std::string docContext = jsonStringValue(body, "context");
+    const AiConfig config = context.ai->snapshot();
+    const std::string requestJson = buildAiRequestBody(prompt, docContext, config);
+    std::string error;
+    const std::string jobId = context.ai->startJob(requestJson, error);
+    if (jobId.empty())
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable, error);
+        return;
+    }
+    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8",
+        "{\"ok\":true,\"jobId\":\"" + jobId + "\"}");
+}
+
+void handleAiStream(ServerContext& context, HttpRequest& request, HttpResponse& response)
+{
+    if (!context.ai)
+    {
+        setJsonError(&response, StatusCode::ServiceUnavailable, "AI 服务未启用");
+        return;
+    }
+    const std::string jobId = queryValue(request.url(), "job");
+    const std::shared_ptr<AiJob> job = context.ai->findJob(jobId);
+    if (!job)
+    {
+        setJsonError(&response, StatusCode::NotFound, "任务不存在或已过期");
+        return;
+    }
+    std::lock_guard<std::mutex> lock(job->mutex);
+    std::ostringstream out;
+    out << "{\"ok\":" << (job->done ? (job->ok ? "true" : "false") : "true")
+        << ",\"done\":" << (job->done ? "true" : "false")
+        << ",\"text\":\"" << jsonEscape(job->text) << "\""
+        << ",\"model\":\"" << jsonEscape(job->model) << "\""
+        << ",\"error\":\"" << jsonEscape(job->error) << "\"}";
+    setResponse(&response, StatusCode::OK, "application/json; charset=utf-8", out.str());
 }
 
 void handleList(ServerContext& context, HttpRequest& request, HttpResponse& response,
@@ -1265,6 +1471,11 @@ bool handle(ServerContext& context, const std::string& requestPath, HttpRequest&
         handleLogin(context, request, response);
         return true;
     }
+    if (requestPath == "/api/register")
+    {
+        handleRegister(context, request, response);
+        return true;
+    }
 
     // OAuth：begin/status 由前端 fetch，callback 由 GitHub/Apple 302/form 回跳。
     // callback 成功后会创建/确认 OAuth 账号并种会话 Cookie，然后重定向回首页。
@@ -1302,10 +1513,30 @@ bool handle(ServerContext& context, const std::string& requestPath, HttpRequest&
             "{\"username\":\"" + jsonEscape(username) + "\"}");
         return true;
     }
-    // AI 网关（配置/状态/聊天）需要登录后通过 sidecar 转发
+    // AI：C++ 直接访问 OpenAI 兼容接口（SSE 流式 + 任务轮询），不再依赖 sidecar
+    if (requestPath == "/api/ai/status")
+    {
+        handleAiStatus(context, response);
+        return true;
+    }
+    if (requestPath == "/api/ai/config")
+    {
+        handleAiConfig(context, request, response);
+        return true;
+    }
+    if (requestPath == "/api/ai/chat")
+    {
+        handleAiChat(context, request, response);
+        return true;
+    }
+    if (requestPath == "/api/ai/stream")
+    {
+        handleAiStream(context, request, response);
+        return true;
+    }
     if (requestPath.compare(0, 8, "/api/ai/") == 0)
     {
-        relaySidecar(context, request, response, requestPath);
+        setJsonError(&response, StatusCode::NotFound, "ai api not found");
         return true;
     }
     // 所有文件操作都限制在登录用户自己的家目录下

@@ -1,11 +1,18 @@
 # ---------- 构建阶段 ----------
 FROM gcc:14-bookworm AS build
 WORKDIR /src
+# AI 直连需要 OpenSSL 头文件（TLS 客户端）
+RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN make release
 
 # ---------- 运行阶段 ----------
 FROM debian:bookworm-slim AS runtime
+
+# OpenSSL 运行时库（debian:bookworm-slim 自带 libssl3，这里显式确保存在）
+RUN apt-get update && apt-get install -y --no-install-recommends libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 运行用户
 RUN groupadd --system app && useradd --system --gid app --home-dir /app --no-create-home app

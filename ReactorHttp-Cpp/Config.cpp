@@ -41,6 +41,7 @@ void printUsage(const char* program)
         "  --drive-root <dir>             enable netdisk mode with this data dir\n"
         "  --users-file <path>            user password file (default users.conf)\n"
         "  --add-user <name:password>     create/update a user then exit\n"
+        "  --no-register                  disable web email registration\n"
         "  --sidecar-url <url>            local AI/OAuth bridge (default http://127.0.0.1:18666)\n"
         "  --help                         show this help\n",
         program, program);
@@ -241,6 +242,10 @@ bool parseConfig(int argc, char* argv[], ServerConfig& config)
                 return false;
             }
             config.addUser = value;
+        }
+        else if (arg == "--no-register")
+        {
+            config.registrationEnabled = false;
         }
         else if (arg == "--sidecar-url")
         {

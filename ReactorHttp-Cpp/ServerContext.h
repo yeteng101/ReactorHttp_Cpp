@@ -1,8 +1,10 @@
 #pragma once
+#include "AiClient.h"
 #include "Config.h"
 #include "SessionStore.h"
 #include "UserStore.h"
 
+#include <memory>
 #include <string>
 
 /*
@@ -12,9 +14,12 @@
 struct ServerContext
 {
     bool driveEnabled = false;
+    bool registrationEnabled = true;
     std::string driveRoot;
     std::string usersFile;
-    std::string sidecarUrl;   // 由 main 从 ServerConfig 拷入
+    std::string sidecarUrl;   // 仅 GitHub/Apple OAuth 需要；AI 已由 C++ 直连
     UserStore users;
     SessionStore sessions;
+    // AI 配置 + 后台流式任务（C++ 直接访问 OpenAI 兼容接口）
+    std::shared_ptr<AiService> ai;
 };

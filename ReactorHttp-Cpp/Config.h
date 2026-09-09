@@ -23,6 +23,7 @@ struct ServerConfig
     std::string driveRoot;                       // 网盘数据目录；为空表示关闭网盘
     std::string usersFile = "users.conf";        // 用户口令文件
     std::string addUser;                         // "name:password"，创建/更新用户后退出
+    bool registrationEnabled = true;             // 允许网页邮箱注册（--no-register 关闭）
     std::string sidecarUrl = "http://127.0.0.1:18666"; // AI/OAuth 本地桥接服务
 };
 
