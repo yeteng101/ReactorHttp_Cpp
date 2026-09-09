@@ -16,12 +16,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libssl-dev
 
       - name: make test（编译 + 运行单元测试）
-        run: |
-          set -o pipefail
-          make test 2>&1 | tee /tmp/make-test.log || {
-            tail -n 10 /tmp/make-test.log | sed 's/^/::error::/'
-            exit 1
-          }
+        run: make test
 
       - name: 验证主服务 Docker 镜像可构建
         run: docker build -f Dockerfile .

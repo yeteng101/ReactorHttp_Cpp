@@ -62,8 +62,14 @@ AI_TEST_SOURCES := tests/ai_test.cpp \
 	$(SRC_DIR)/AiClient.cpp \
 	$(SRC_DIR)/Log.cpp
 
-ifneq ($(shell uname -s),Linux)
+ifneq ($(UNAME_S),Linux)
 SOURCES := $(filter-out $(SRC_DIR)/EpollDispatcher.cpp,$(SOURCES))
+endif
+
+# Linux 上 EventLoop 直接构造 EpollDispatcher，测试目标也必须链接该实现
+ifeq ($(UNAME_S),Linux)
+TEST_SOURCES += $(SRC_DIR)/EpollDispatcher.cpp
+DRIVE_TEST_SOURCES += $(SRC_DIR)/EpollDispatcher.cpp
 endif
 
 .PHONY: all release test clean
